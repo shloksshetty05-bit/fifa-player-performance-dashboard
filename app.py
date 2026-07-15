@@ -73,7 +73,7 @@ def classify_player_style(stats: dict, position: str, height: float) -> dict:
         else:
             return {"style": "Ball Playing Defender", "desc": "Ball Playing Defender: High pass accuracy and distributed play starting from the back."}
             
-    if position == 'midfielder':
+    if 'midfield' in position:
         if tackles_per_90 >= 1.5 and key_passes_per_90 >= 0.8:
             return {"style": "Box-to-Box Midfielder", "desc": "Box-to-Box Midfielder: High work-rate player contributing significantly in both attacking key passes and defensive tackles."}
         elif tackles_per_90 >= 2.0:

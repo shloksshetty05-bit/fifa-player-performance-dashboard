@@ -331,7 +331,7 @@ def get_best_midfielders(engine, season: int = None, limit: int = 10) -> pd.Data
     JOIN games g ON a.game_id = g.game_id
     JOIN clubs c ON a.player_club_id = c.club_id
     JOIN players p ON a.player_id = p.player_id
-    WHERE p.position = 'Midfielder'
+    WHERE p.position IN ('Midfield', 'Midfielder')
     """
     params = {"limit": limit}
     

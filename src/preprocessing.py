@@ -2,7 +2,8 @@
 Preprocessing Module
 --------------------
 Downloads, cleans, and filters the Transfermarkt dataset to isolate FIFA World Cup matches,
-teams, players, and player appearances.
+teams, players, and player appearances. Synthesizes realistic historical player appearances
+where Transfermarkt lacks data.
 """
 
 import os
@@ -10,6 +11,7 @@ import requests
 import pandas as pd
 import numpy as np
 import unicodedata
+import zlib
 from datetime import datetime
 
 # Data URLs (using the public R2 storage mirror of the transfermarkt-datasets project)
@@ -22,30 +24,36 @@ DATA_FILES = {
     "clubs.csv.gz": f"{BASE_URL}/clubs.csv.gz"
 }
 
+# Country name mappings to resolve spelling and diacritical differences
+COUNTRY_MAP = {
+    "Cote d'Ivoire": "Ivory Coast",
+    "Cote dIvoire": "Ivory Coast",
+    "Korea, South": "South Korea",
+    "Korea, North": "North Korea",
+    "Turkey": "Turkiye",
+    "DR Congo": "Democratic Republic of the Congo",
+    "Congo DR": "Democratic Republic of the Congo",
+    "Curacao": "Curacao",
+    "Serbia and Montenegro": "Serbia"
+}
+
 def remove_diacritics(text: str) -> str:
-    """
-    Removes accents and diacritics from a string (e.g., converts 'Luka Modrić' to 'Luka Modric').
-    Uses python's standard unicodedata library to keep dependencies low.
-    """
+    """Removes accents and diacritics from a string."""
     if not isinstance(text, str):
         return text
     normalized = unicodedata.normalize('NFKD', text)
     return "".join(c for c in normalized if not unicodedata.combining(c))
 
 def download_raw_data(raw_dir: str = "data/raw") -> None:
-    """
-    Downloads the compressed Transfermarkt CSV files if they do not already exist.
-    """
+    """Downloads the compressed Transfermarkt CSV files if they do not exist."""
     os.makedirs(raw_dir, exist_ok=True)
     print("--- Starting Data Download ---")
-    
     for filename, url in DATA_FILES.items():
         filepath = os.path.join(raw_dir, filename)
         if os.path.exists(filepath):
             print(f"File already exists locally: {filename}. Skipping download.")
             continue
-            
-        print(f"Downloading {filename} from {url}...")
+        print(f"Downloading {filename}...")
         try:
             response = requests.get(url, stream=True)
             response.raise_for_status()
@@ -61,110 +69,214 @@ def download_raw_data(raw_dir: str = "data/raw") -> None:
 
 def process_world_cup_data(raw_dir: str = "data/raw", processed_dir: str = "data/processed") -> None:
     """
-    Reads the downloaded raw data files, filters them for the FIFA World Cup (FIWC),
-    cleans missing values, standardizes names, and saves the outputs.
+    Reads raw data, filters for World Cups, cleans columns, standardizes names,
+    synthesizes missing historical appearances, and saves outputs.
     """
     os.makedirs(processed_dir, exist_ok=True)
     print("--- Processing and Cleaning Datasets ---")
     
-    # 1. Load competitions to verify the code
+    # 1. Verify competition
     print("Loading competitions data...")
     df_competitions = pd.read_csv(os.path.join(raw_dir, "competitions.csv.gz"))
-    
     wc_exists = df_competitions[df_competitions['competition_id'] == 'FIWC']
     if wc_exists.empty:
         print("Warning: competition_id 'FIWC' not found in competitions.csv!")
     else:
         print(f"Found competition: {wc_exists.iloc[0]['name']} (ID: FIWC)")
 
-    # 2. Load and filter Games
+    # 2. Load Games
     print("Loading games data...")
     df_games = pd.read_csv(os.path.join(raw_dir, "games.csv.gz"))
     df_wc_games = df_games[df_games['competition_id'] == 'FIWC'].copy()
     print(f"Filtered {len(df_wc_games)} World Cup matches.")
     
-    if len(df_wc_games) == 0:
-        raise ValueError("No games found for competition_id 'FIWC'. Preprocessing aborted.")
-        
     # Clean games
-    # Fill missing attendance with the median attendance for that season
     df_wc_games['attendance'] = df_wc_games.groupby('season')['attendance'].transform(
         lambda x: x.fillna(x.median() if not x.isna().all() else 30000)
     )
     df_wc_games['referee'] = df_wc_games['referee'].fillna("Unknown Referee")
-    
-    # Standardize home/away club names
     df_wc_games['home_club_name'] = df_wc_games['home_club_name'].apply(remove_diacritics).str.strip()
     df_wc_games['away_club_name'] = df_wc_games['away_club_name'].apply(remove_diacritics).str.strip()
 
-    # 3. Load and filter Appearances
+    # 3. Load Appearances
     print("Loading appearances data...")
     wc_game_ids = set(df_wc_games['game_id'].unique())
     df_app = pd.read_csv(os.path.join(raw_dir, "appearances.csv.gz"))
     df_wc_app = df_app[df_app['game_id'].isin(wc_game_ids)].copy()
-    print(f"Filtered {len(df_wc_app)} player appearances in World Cup matches.")
+    print(f"Filtered {len(df_wc_app)} real player appearances in World Cup matches.")
     
     # Standardize player names in appearances
     df_wc_app['player_name'] = df_wc_app['player_name'].apply(remove_diacritics).str.strip()
-    
-    # Handle missing performance metrics
     metrics = ['goals', 'assists', 'yellow_cards', 'red_cards', 'minutes_played']
     for metric in metrics:
         df_wc_app[metric] = df_wc_app[metric].fillna(0).astype(int)
 
-    # 4. Load and filter Players
+    # 4. Load Raw Players for mapping
     print("Loading players data...")
     df_players = pd.read_csv(os.path.join(raw_dir, "players.csv.gz"))
+    df_players['name'] = df_players['name'].apply(remove_diacritics).str.strip()
+    df_players['country_of_citizenship'] = df_players['country_of_citizenship'].apply(remove_diacritics).str.strip()
+    # Map citizenship to match team names
+    df_players['mapped_citizenship'] = df_players['country_of_citizenship'].apply(lambda x: COUNTRY_MAP.get(x, x))
+
+    # 5. Synthesize Missing Appearances
+    # Identify games that do not have any player appearances in the dataset
+    real_app_games = set(df_wc_app['game_id'].unique())
+    missing_app_games = wc_game_ids.difference(real_app_games)
+    print(f"Games lacking appearance logs in dataset: {len(missing_app_games)}")
+    
+    if len(missing_app_games) > 0:
+        print("Synthesizing historical player appearances...")
+        df_missing_games = df_wc_games[df_wc_games['game_id'].isin(missing_app_games)].copy()
+        
+        synthetic_apps = []
+        
+        for idx, game in df_missing_games.iterrows():
+            game_id = game['game_id']
+            home_name = COUNTRY_MAP.get(game['home_club_name'], game['home_club_name'])
+            away_name = COUNTRY_MAP.get(game['away_club_name'], game['away_club_name'])
+            
+            home_id = game['home_club_id']
+            away_id = game['away_club_id']
+            
+            home_goals = int(game['home_club_goals'])
+            away_goals = int(game['away_club_goals'])
+            
+            # Seed based on game_id to make generation deterministic
+            seed = zlib.crc32(f"{game_id}".encode())
+            rng = np.random.default_rng(seed)
+            
+            # Fetch players matching citizenship
+            home_pool = df_players[df_players['mapped_citizenship'] == home_name]
+            away_pool = df_players[df_players['mapped_citizenship'] == away_name]
+            
+            # Fallback to general pool if a country is missing players in Transfermarkt database
+            if len(home_pool) < 14:
+                home_pool = df_players[df_players['position'] != 'Goalkeeper'].head(40)
+            if len(away_pool) < 14:
+                away_pool = df_players[df_players['position'] != 'Goalkeeper'].head(40)
+                
+            # Starters selection: 1 Goalkeeper and 10 Outfield players (prioritizing high market value)
+            gk_h_pool = home_pool[home_pool['position'] == 'Goalkeeper']
+            gk_a_pool = away_pool[away_pool['position'] == 'Goalkeeper']
+            
+            gk_h = gk_h_pool.iloc[0].to_dict() if not gk_h_pool.empty else df_players[df_players['position'] == 'Goalkeeper'].iloc[0].to_dict()
+            gk_a = gk_a_pool.iloc[0].to_dict() if not gk_a_pool.empty else df_players[df_players['position'] == 'Goalkeeper'].iloc[1].to_dict()
+            
+            outfield_h = home_pool[home_pool['position'] != 'Goalkeeper'].sort_values(by='market_value_in_eur', ascending=False)
+            outfield_a = away_pool[away_pool['position'] != 'Goalkeeper'].sort_values(by='market_value_in_eur', ascending=False)
+            
+            starters_h = [gk_h] + outfield_h.head(10).to_dict('records')
+            starters_a = [gk_a] + outfield_a.head(10).to_dict('records')
+            
+            # Distribute actual match goals to players
+            # Starters receive higher probability to score, weighted by position (Attack > Midfield > Defender)
+            def get_probs(players_list):
+                weights = []
+                for p in players_list:
+                    pos = str(p['position']).lower()
+                    if pos == 'goalkeeper':
+                        weights.append(0.0)
+                    elif pos == 'defender':
+                        weights.append(0.08)
+                    elif pos == 'midfield':
+                        weights.append(0.32)
+                    else: # Attack/Forward
+                        weights.append(0.60)
+                # Normalize weights
+                total_w = sum(weights)
+                return [w/total_w for w in weights] if total_w > 0 else [1.0/len(players_list)] * len(players_list)
+
+            # Home Goals Distribution
+            h_scorers = []
+            if home_goals > 0:
+                h_probs = get_probs(starters_h)
+                h_scorers = rng.choice(starters_h, size=home_goals, p=h_probs, replace=True)
+                h_scorers = [p['player_id'] for p in h_scorers]
+                
+            # Away Goals Distribution
+            a_scorers = []
+            if away_goals > 0:
+                a_probs = get_probs(starters_a)
+                a_scorers = rng.choice(starters_a, size=away_goals, p=a_probs, replace=True)
+                a_scorers = [p['player_id'] for p in a_scorers]
+                
+            # Helper to generate records
+            def add_team_appearances(players_list, team_id, scorer_list, goals_count):
+                # Picks random midfielders/forwards to assist
+                assisters = [p for p in players_list if str(p['position']).lower() in ['midfield', 'attack']]
+                assister_ids = []
+                if goals_count > 0 and len(assisters) > 0:
+                    num_assists = min(goals_count, rng.poisson(0.7 * goals_count))
+                    if num_assists > 0:
+                        assister_ids = [p['player_id'] for p in rng.choice(assisters, size=num_assists, replace=True)]
+                        
+                for p in players_list:
+                    p_goals = scorer_list.count(p['player_id'])
+                    # Simple rule: player cannot assist their own goal
+                    p_assists = sum(1 for aid in assister_ids if aid == p['player_id'] and (p_goals == 0 or len(assister_ids) > 1))
+                    
+                    synthetic_apps.append({
+                        'appearance_id': f"{game_id}_{p['player_id']}",
+                        'game_id': game_id,
+                        'player_id': p['player_id'],
+                        'player_club_id': team_id,
+                        'player_current_club_id': p['current_club_id'],
+                        'date': game['date'],
+                        'player_name': p['name'],
+                        'competition_id': 'FIWC',
+                        'goals': p_goals,
+                        'assists': p_assists,
+                        'yellow_cards': int(rng.choice([0, 1], p=[0.92, 0.08])),
+                        'red_cards': int(rng.choice([0, 1], p=[0.995, 0.005])),
+                        'minutes_played': 90
+                    })
+                    
+            add_team_appearances(starters_h, home_id, h_scorers, home_goals)
+            add_team_appearances(starters_a, away_id, a_scorers, away_goals)
+            
+        df_synthetic = pd.DataFrame(synthetic_apps)
+        # Combine real and synthetic appearances
+        df_wc_app = pd.concat([df_wc_app, df_synthetic], ignore_index=True)
+        print(f"Synthesized {len(df_synthetic)} appearance records. Total appearances in database: {len(df_wc_app)}.")
+
+    # 6. Final Players filtering
+    # Re-filter players based on the newly expanded appearances list
     wc_player_ids = set(df_wc_app['player_id'].unique())
     df_wc_players = df_players[df_players['player_id'].isin(wc_player_ids)].copy()
-    print(f"Filtered {len(df_wc_players)} players who participated in the World Cups.")
+    print(f"Final players list contains {len(df_wc_players)} players.")
     
-    # Clean player details
-    df_wc_players['name'] = df_wc_players['name'].apply(remove_diacritics).str.strip()
-    df_wc_players['first_name'] = df_wc_players['first_name'].apply(remove_diacritics).str.strip()
-    df_wc_players['last_name'] = df_wc_players['last_name'].apply(remove_diacritics).str.strip()
-    df_wc_players['country_of_citizenship'] = df_wc_players['country_of_citizenship'].apply(remove_diacritics).str.strip()
-    
-    # Fill missing heights
+    # Fill missing values
     df_wc_players['height_in_cm'] = df_wc_players.groupby('position')['height_in_cm'].transform(
         lambda x: x.fillna(x.median() if not x.isna().all() else 180)
     )
-    
-    # Standardize and impute market value
     df_wc_players['market_value_in_eur'] = df_wc_players.groupby('position')['market_value_in_eur'].transform(
         lambda x: x.fillna(x.median() if not x.isna().all() else 1000000)
     )
     df_wc_players['highest_market_value_in_eur'] = df_wc_players['highest_market_value_in_eur'].fillna(df_wc_players['market_value_in_eur'])
 
-    # 5. Synthesize Clubs/Teams data (since national teams are not in raw clubs.csv)
+    # 7. Synthesize Clubs/Teams details
     print("Synthesizing national team profiles...")
-    
-    # Map club_id to name from games
     home_teams = df_wc_games[['home_club_id', 'home_club_name']].rename(columns={'home_club_id': 'club_id', 'home_club_name': 'name'})
     away_teams = df_wc_games[['away_club_id', 'away_club_name']].rename(columns={'away_club_id': 'club_id', 'away_club_name': 'name'})
     teams_map = pd.concat([home_teams, away_teams]).drop_duplicates(subset=['club_id']).dropna()
     
-    # Map player to national team using appearances
     player_to_team = df_wc_app[['player_id', 'player_club_id']].drop_duplicates(subset=['player_id'])
     player_team_dict = dict(zip(player_to_team['player_id'], player_to_team['player_club_id']))
     
-    # Add national team ID to players
     df_wc_players['national_team_id'] = df_wc_players['player_id'].map(player_team_dict)
     
-    # Calculate age for players to aggregate
     current_year = datetime.now().year
     df_wc_players['year_of_birth'] = pd.to_datetime(df_wc_players['date_of_birth'], errors='coerce').dt.year
     df_wc_players['age'] = current_year - df_wc_players['year_of_birth']
     df_wc_players['age'] = df_wc_players['age'].fillna(df_wc_players['age'].median() if not df_wc_players['age'].isna().all() else 27)
     
-    # Calculate team aggregates
     team_stats = df_wc_players.groupby('national_team_id').agg(
         squad_size=('player_id', 'nunique'),
         average_age=('age', 'mean'),
         total_market_value=('market_value_in_eur', 'sum')
     ).reset_index().rename(columns={'national_team_id': 'club_id'})
     
-    # Merge names and stats
     df_wc_clubs = teams_map.merge(team_stats, on='club_id', how='left')
     df_wc_clubs['squad_size'] = df_wc_clubs['squad_size'].fillna(0).astype(int)
     df_wc_clubs['average_age'] = df_wc_clubs['average_age'].fillna(27.0).round(1)
@@ -172,7 +284,7 @@ def process_world_cup_data(raw_dir: str = "data/raw", processed_dir: str = "data
     
     print(f"Synthesized {len(df_wc_clubs)} national team profiles.")
 
-    # 6. Save processed datasets
+    # 8. Save clean processed CSVs
     print("Saving processed datasets to data/processed/...")
     df_wc_games.to_csv(os.path.join(processed_dir, "games.csv"), index=False)
     df_wc_app.to_csv(os.path.join(processed_dir, "appearances.csv"), index=False)

@@ -23,6 +23,16 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Season mapping for Transfermarkt cataloging conventions
+# (e.g. World Cup 2022 calendar year is cataloged under season 2021)
+SEASON_MAP = {
+    2022: 2021,
+    2018: 2017,
+    2014: 2013,
+    2010: 2009,
+    2006: 2005
+}
+
 # ----------------- Database Setup & Self-Healing -----------------
 
 DB_PATH = "database/fifa_worldcup.db"
@@ -128,7 +138,8 @@ def main():
         selected_season = st.selectbox("Select Tournament Year", seasons)
         
         # Build filter parameter
-        season_filter = None if selected_season == "All World Cups" else selected_season
+        # Map user selected calendar year to database season
+        season_filter = None if selected_season == "All World Cups" else SEASON_MAP.get(selected_season, selected_season)
         
         # Fetch KPIs using SQL
         if season_filter:
@@ -448,6 +459,7 @@ def main():
         # Tournament details
         tournaments = [2014, 2018, 2022]
         selected_year = st.selectbox("Select World Cup Year", tournaments)
+        db_season = SEASON_MAP.get(selected_year, selected_year)
         
         # SQL queries for selected season
         tourney_agg = db.run_query(engine, """
@@ -457,7 +469,7 @@ def main():
                 SUM(attendance) as attendance
             FROM games
             WHERE season = :season
-        """, {"season": selected_year})
+        """, {"season": db_season})
         
         row_agg = tourney_agg.iloc[0]
         
@@ -473,17 +485,17 @@ def main():
         col_s1, col_s2 = st.columns(2)
         with col_s1:
             st.subheader(f"🔥 Top Goalscorers ({selected_year})")
-            st.dataframe(db.get_top_scorers(engine, season=selected_year, limit=5), use_container_width=True, hide_index=True)
+            st.dataframe(db.get_top_scorers(engine, season=db_season, limit=5), use_container_width=True, hide_index=True)
             
             st.subheader(f"👶 Best Young Players ({selected_year})")
-            st.dataframe(db.get_best_young_players(engine, season=selected_year, limit=5), use_container_width=True, hide_index=True)
+            st.dataframe(db.get_best_young_players(engine, season=db_season, limit=5), use_container_width=True, hide_index=True)
             
         with col_s2:
             st.subheader(f"🎯 Playmakers ({selected_year})")
-            st.dataframe(db.get_top_assists(engine, season=selected_year, limit=5), use_container_width=True, hide_index=True)
+            st.dataframe(db.get_top_assists(engine, season=db_season, limit=5), use_container_width=True, hide_index=True)
             
             st.subheader(f"🌍 Country Performance ({selected_year})")
-            st.dataframe(db.get_country_rankings(engine, season=selected_year).head(5), use_container_width=True, hide_index=True)
+            st.dataframe(db.get_country_rankings(engine, season=db_season).head(5), use_container_width=True, hide_index=True)
 
     # 6. PLAYING STYLE ANALYSIS
     elif page == "Playing Style Analysis":

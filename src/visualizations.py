@@ -1,8 +1,8 @@
 """
 Visualizations Module
 ---------------------
-Contains drawing functions for static (Matplotlib/Seaborn) and interactive (Plotly) charts 
-used across the Streamlit pages.
+Houses plotting functions using Plotly for interactive dashboard charts
+and Matplotlib/Seaborn for clean static analytical charts.
 """
 
 import matplotlib.pyplot as plt
@@ -10,15 +10,319 @@ import seaborn as sns
 import plotly.graph_objects as go
 import plotly.express as px
 import pandas as pd
+import numpy as np
 
-def plot_radar_chart(player_stats: dict) -> go.Figure:
-    """Generates an interactive Plotly radar chart comparing player performance parameters."""
-    pass
+# Set seaborn style for clean, professional aesthetics
+sns.set_theme(style="whitegrid")
+plt.rcParams['figure.facecolor'] = '#ffffff'
+plt.rcParams['axes.facecolor'] = '#ffffff'
 
-def plot_performance_trend(df_appearances: pd.DataFrame) -> go.Figure:
-    """Generates a line plot showing player match ratings over the course of a tournament."""
-    pass
+# Helper to safely extract float values and avoid TypeError with None/NaN
+def get_val(d: dict, key: str, default: float = 0.0) -> float:
+    val = d.get(key)
+    if val is None or (isinstance(val, float) and np.isnan(val)):
+        return default
+    try:
+        return float(val)
+    except:
+        return default
 
-def plot_team_comparison(team1_stats: dict, team2_stats: dict) -> go.Figure:
-    """Generates a comparison bar chart between two national teams."""
-    pass
+# ----------------- Plotly Interactive Visualizations -----------------
+
+def plot_player_radar(player_data: dict, player_name: str, comparison_data: dict = None, comparison_name: str = None) -> go.Figure:
+    """
+    Generates an interactive radar chart. Standardizes metrics to a 0-100 scale
+    representing percentile/performance levels.
+    """
+    categories = [
+        'Goals per 90', 'Assists per 90', 'Key Passes', 
+        'Dribbles Completed', 'Pass Accuracy %', 'Defensive Actions'
+    ]
+    
+    fig = go.Figure()
+    
+    # Extract values safely for primary player
+    tackles1 = get_val(player_data, 'tackles')
+    interceptions1 = get_val(player_data, 'interceptions')
+    blocks1 = get_val(player_data, 'blocks')
+    def_actions1 = tackles1 + interceptions1 + blocks1
+    
+    val1 = [
+        min(100.0, get_val(player_data, 'goals_per_90') * 100),
+        min(100.0, get_val(player_data, 'assists_per_90') * 100),
+        min(100.0, (get_val(player_data, 'key_passes') / 4.0) * 100),
+        min(100.0, (get_val(player_data, 'dribbles_completed') / 4.0) * 100),
+        get_val(player_data, 'pass_accuracy'),
+        min(100.0, (def_actions1 / 6.0) * 100)
+    ]
+    
+    # Close the radar loop
+    val1_closed = val1 + [val1[0]]
+    categories_closed = categories + [categories[0]]
+    
+    fig.add_trace(go.Scatterpolar(
+        r=val1_closed,
+        theta=categories_closed,
+        fill='toself',
+        fillcolor='rgba(31, 119, 180, 0.4)',
+        line=dict(color='#1f77b4', width=2),
+        name=player_name
+    ))
+    
+    # Add comparison player if provided
+    if comparison_data and comparison_name:
+        tackles2 = get_val(comparison_data, 'tackles')
+        interceptions2 = get_val(comparison_data, 'interceptions')
+        blocks2 = get_val(comparison_data, 'blocks')
+        def_actions2 = tackles2 + interceptions2 + blocks2
+        
+        val2 = [
+            min(100.0, get_val(comparison_data, 'goals_per_90') * 100),
+            min(100.0, get_val(comparison_data, 'assists_per_90') * 100),
+            min(100.0, (get_val(comparison_data, 'key_passes') / 4.0) * 100),
+            min(100.0, (get_val(comparison_data, 'dribbles_completed') / 4.0) * 100),
+            get_val(comparison_data, 'pass_accuracy'),
+            min(100.0, (def_actions2 / 6.0) * 100)
+        ]
+        val2_closed = val2 + [val2[0]]
+        
+        fig.add_trace(go.Scatterpolar(
+            r=val2_closed,
+            theta=categories_closed,
+            fill='toself',
+            fillcolor='rgba(214, 39, 40, 0.4)',
+            line=dict(color='#d62728', width=2),
+            name=comparison_name
+        ))
+        
+    fig.update_layout(
+        polar=dict(
+            radialaxis=dict(
+                visible=True,
+                range=[0, 100],
+                showticklabels=False
+            )
+        ),
+        showlegend=True,
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        margin=dict(l=30, r=30, t=30, b=30),
+        height=350
+    )
+    return fig
+
+def plot_player_trend(game_log_df: pd.DataFrame, player_name: str) -> go.Figure:
+    """
+    Generates a line plot showing player match ratings over matches.
+    """
+    fig = go.Figure()
+    
+    # Add match rating line
+    fig.add_trace(go.Scatter(
+        x=game_log_df['match_name'],
+        y=game_log_df['match_rating'],
+        mode='lines+markers',
+        line=dict(color='#2ca02c', width=3),
+        marker=dict(size=8, symbol='circle'),
+        name='Match Rating',
+        hovertemplate='Match: %{x}<br>Rating: %{y:.1f}<extra></extra>'
+    ))
+    
+    # Add annotation for goals/assists
+    for idx, row in game_log_df.iterrows():
+        contrib = []
+        if row['goals'] > 0:
+            contrib.append(f"{int(row['goals'])}G")
+        if row['assists'] > 0:
+            contrib.append(f"{int(row['assists'])}A")
+            
+        if contrib:
+            fig.add_annotation(
+                x=row['match_name'],
+                y=row['match_rating'] + 0.2,
+                text="+".join(contrib),
+                showarrow=False,
+                font=dict(size=10, color="white"),
+                bgcolor="#1f77b4",
+                borderpad=4
+            )
+            
+    fig.update_layout(
+        title=f"Match Rating Trend for {player_name}",
+        xaxis_title="Match",
+        yaxis_title="Match Rating (1-10)",
+        yaxis=dict(range=[1.0, 10.5]),
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        margin=dict(l=40, r=40, t=50, b=40),
+        height=300
+    )
+    return fig
+
+def plot_team_comparison(team1_df: pd.DataFrame, team2_df: pd.DataFrame, t1_name: str, t2_name: str) -> go.Figure:
+    """
+    Plots a dual bar chart comparing two national teams across key aggregates.
+    """
+    metrics = ['Squad Size', 'Average Age', 'Total Goals', 'Total Assists', 'Average Match Rating']
+    
+    # Gather metrics safely
+    t1_vals = [
+        int(team1_df['squad_size'].iloc[0]) if 'squad_size' in team1_df.columns else 23,
+        float(team1_df['average_age'].iloc[0]),
+        int(team1_df['goals'].iloc[0]) if 'goals' in team1_df.columns else 0,
+        int(team1_df['assists'].iloc[0]) if 'assists' in team1_df.columns else 0,
+        float(team1_df['avg_rating'].iloc[0])
+    ]
+    
+    t2_vals = [
+        int(team2_df['squad_size'].iloc[0]) if 'squad_size' in team2_df.columns else 23,
+        float(team2_df['average_age'].iloc[0]),
+        int(team2_df['goals'].iloc[0]) if 'goals' in team2_df.columns else 0,
+        int(team2_df['assists'].iloc[0]) if 'assists' in team2_df.columns else 0,
+        float(team2_df['avg_rating'].iloc[0])
+    ]
+    
+    fig = go.Figure()
+    
+    fig.add_trace(go.Bar(
+        x=metrics,
+        y=t1_vals,
+        name=t1_name,
+        marker_color='#1f77b4',
+        text=[f"{v:.1f}" if isinstance(v, float) else str(v) for v in t1_vals],
+        textposition='auto'
+    ))
+    
+    fig.add_trace(go.Bar(
+        x=metrics,
+        y=t2_vals,
+        name=t2_name,
+        marker_color='#d62728',
+        text=[f"{v:.1f}" if isinstance(v, float) else str(v) for v in t2_vals],
+        textposition='auto'
+    ))
+    
+    fig.update_layout(
+        title=f"National Team Comparison: {t1_name} vs {t2_name}",
+        barmode='group',
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        margin=dict(l=40, r=40, t=50, b=40),
+        height=350
+    )
+    return fig
+
+def plot_squad_bubble_chart(players_df: pd.DataFrame, team_name: str) -> go.Figure:
+    """
+    Creates an interactive squad bubble chart.
+    X-axis: Age, Y-axis: Market Value, Size: Performance Index, Color: Position.
+    """
+    # Clean market value for display (in Millions)
+    players_df['value_m'] = players_df['market_value_in_eur'] / 1_000_000.0
+    
+    fig = px.scatter(
+        players_df,
+        x='age',
+        y='value_m',
+        size='performance_index',
+        color='position',
+        hover_name='name',
+        hover_data={
+            'age': True,
+            'value_m': ':.1f',
+            'position': True,
+            'performance_index': ':.1f'
+        },
+        labels={
+            'age': 'Age',
+            'value_m': 'Market Value (M EUR)',
+            'position': 'Position',
+            'performance_index': 'Performance Index'
+        },
+        title=f"Squad Structure & Valuations - {team_name}"
+    )
+    
+    fig.update_layout(
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        margin=dict(l=40, r=40, t=50, b=40),
+        height=380
+    )
+    return fig
+
+# ----------------- Matplotlib / Seaborn Static Visualizations -----------------
+
+def plot_position_rating_boxplot(appearances_df: pd.DataFrame) -> plt.Figure:
+    """
+    Plots a boxplot/violin plot showing the distribution of match ratings by player position.
+    """
+    fig, ax = plt.subplots(figsize=(8, 4))
+    
+    # Capitalize positions for aesthetics
+    df_plot = appearances_df.copy()
+    df_plot['position'] = df_plot['position'].str.capitalize()
+    
+    # Color palette
+    colors = {"Goalkeeper": "#ff7f0e", "Defender": "#1f77b4", "Midfielder": "#2ca02c", "Attack": "#d62728", "Forward": "#d62728"}
+    
+    sns.boxplot(
+        data=df_plot,
+        x='position',
+        y='match_rating',
+        hue='position',
+        palette=colors,
+        ax=ax,
+        legend=False
+    )
+    
+    ax.set_title("Match Rating Distribution by Player Position", fontsize=12, fontweight='bold', pad=12)
+    ax.set_xlabel("Position", fontsize=10)
+    ax.set_ylabel("Match Rating (1-10)", fontsize=10)
+    ax.set_ylim(4.0, 10.2)
+    
+    plt.tight_layout()
+    return fig
+
+def plot_metrics_correlation(appearances_df: pd.DataFrame) -> plt.Figure:
+    """
+    Generates a correlation matrix heatmap of player actions and ratings.
+    """
+    fig, ax = plt.subplots(figsize=(9, 6))
+    
+    cols_to_correlate = [
+        'goals', 'assists', 'minutes_played', 'saves', 'tackles', 
+        'interceptions', 'passes_attempted', 'pass_accuracy', 
+        'key_passes', 'shots_on_target', 'dribbles_completed', 'match_rating'
+    ]
+    
+    # Filter to columns that exist
+    cols = [col for col in cols_to_correlate if col in appearances_df.columns]
+    
+    corr = appearances_df[cols].corr()
+    
+    # Rename columns to look professional on the axis labels
+    labels = [c.replace('_', ' ').title() for c in cols]
+    
+    sns.heatmap(
+        corr,
+        annot=True,
+        cmap="coolwarm",
+        fmt=".2f",
+        vmin=-1,
+        vmax=1,
+        square=True,
+        linewidths=0.5,
+        xticklabels=labels,
+        yticklabels=labels,
+        ax=ax,
+        cbar_kws={"shrink": 0.8}
+    )
+    
+    ax.set_title("Performance Metrics Correlation Matrix", fontsize=12, fontweight='bold', pad=15)
+    plt.xticks(rotation=45, ha='right')
+    
+    plt.tight_layout()
+    return fig
+
+if __name__ == "__main__":
+    print("FIFA Visualizations module initialized.")

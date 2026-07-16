@@ -37,34 +37,71 @@ COUNTRY_MAP = {
     "Serbia and Montenegro": "Serbia"
 }
 
-# Target World Cup goals and assists for top stars to ensure real-world accuracy
-REAL_WORLD_WC_STATS = {
-    "Lionel Messi": (13, 8),
-    "Kylian Mbappe": (12, 3),
-    "Thomas Muller": (10, 6),
-    "Cristiano Ronaldo": (8, 2),
-    "Neymar": (8, 3),
-    "Harry Kane": (8, 3),
-    "Luis Suarez": (7, 4),
-    "Ivan Perisic": (6, 5),
-    "James Rodriguez": (6, 2),
-    "Antoine Griezmann": (6, 3),
-    "Miroslav Klose": (16, 5),
-    "Ronaldo": (15, 5),
-    "Thierry Henry": (6, 2),
-    "Zinedine Zidane": (5, 3),
-    "David Villa": (9, 3),
-    "Robin van Persie": (6, 2),
-    "Arjen Robben": (6, 6),
-    "Wesley Sneijder": (6, 4),
-    "Diego Forlan": (6, 1),
-    "Toni Kroos": (3, 4),
-    "Mesut Ozil": (2, 4),
-    "Romelu Lukaku": (5, 1),
-    "Edinson Cavani": (5, 0),
-    "Eden Hazard": (3, 4),
-    "Luka Modric": (2, 1),
-    "Robert Lewandowski": (2, 1),
+# Target World Cup goals and assists for top stars per season/tournament to ensure historical accuracy
+REAL_WORLD_SEASON_STATS = {
+    # 2021 Season (2022 World Cup)
+    2021: {
+        "Lionel Messi": (7, 3),
+        "Kylian Mbappe": (8, 2),
+        "Harry Kane": (2, 3),
+        "Thomas Muller": (0, 0),
+        "Neymar": (2, 1),
+        "Ivan Perisic": (3, 3),
+        "Antoine Griezmann": (0, 3),
+        "Luka Modric": (0, 0),
+        "Robert Lewandowski": (2, 1),
+    },
+    # 2017 Season (2018 World Cup)
+    2017: {
+        "Lionel Messi": (1, 2),
+        "Kylian Mbappe": (4, 0),
+        "Cristiano Ronaldo": (4, 0),
+        "Harry Kane": (6, 0),
+        "Thomas Muller": (0, 0),
+        "Neymar": (2, 1),
+        "Ivan Perisic": (3, 1),
+        "Antoine Griezmann": (4, 2),
+        "Eden Hazard": (3, 4),
+        "Luka Modric": (2, 1),
+        "Romelu Lukaku": (4, 1),
+        "Edinson Cavani": (3, 0),
+    },
+    # 2013 Season (2014 World Cup)
+    2013: {
+        "Lionel Messi": (4, 1),
+        "Thomas Muller": (5, 3),
+        "Cristiano Ronaldo": (1, 1),
+        "Neymar": (4, 1),
+        "James Rodriguez": (6, 2),
+        "Robin van Persie": (4, 0),
+        "Arjen Robben": (3, 1),
+        "Toni Kroos": (2, 4),
+        "Miroslav Klose": (2, 0),
+        "Karim Benzema": (3, 2),
+    },
+    # 2009 Season (2010 World Cup)
+    2009: {
+        "Lionel Messi": (0, 1),
+        "Thomas Muller": (5, 3),
+        "Cristiano Ronaldo": (1, 1),
+        "David Villa": (5, 1),
+        "Wesley Sneijder": (5, 0),
+        "Diego Forlan": (5, 1),
+        "Miroslav Klose": (4, 0),
+        "Arjen Robben": (2, 1),
+        "Robin van Persie": (1, 0),
+    },
+    # 2005 Season (2006 World Cup)
+    2005: {
+        "Lionel Messi": (1, 1),
+        "Cristiano Ronaldo": (1, 0),
+        "Miroslav Klose": (5, 1),
+        "Thierry Henry": (3, 0),
+        "Zinedine Zidane": (3, 1),
+        "David Villa": (3, 0),
+        "Ronaldo": (3, 0),
+        "Arjen Robben": (1, 0),
+    }
 }
 
 def remove_diacritics(text: str) -> str:
@@ -163,8 +200,23 @@ def process_world_cup_data(raw_dir: str = "data/raw", processed_dir: str = "data
         df_missing_games = df_wc_games[df_wc_games['game_id'].isin(missing_app_games)].copy()
         
         synthetic_apps = []
-        assigned_goals = df_wc_app.groupby('player_id')['goals'].sum().to_dict()
-        assigned_assists = df_wc_app.groupby('player_id')['assists'].sum().to_dict()
+        
+        # Track season goals/assists for ordinary players and season stars to prevent era saturation
+        df_wc_app_season = df_wc_app.merge(df_wc_games[['game_id', 'season']], on='game_id', how='left')
+        
+        # Track season goals/assists for ordinary players to prevent era saturation
+        df_wc_app_season = df_wc_app.merge(df_wc_games[['game_id', 'season']], on='game_id', how='left')
+        real_goals_season = df_wc_app_season.groupby(['season', 'player_id'])['goals'].sum().to_dict()
+        real_assists_season = df_wc_app_season.groupby(['season', 'player_id'])['assists'].sum().to_dict()
+        
+        from collections import defaultdict
+        assigned_goals_season = defaultdict(dict)
+        assigned_assists_season = defaultdict(dict)
+        
+        for (sn, pid), gls in real_goals_season.items():
+            assigned_goals_season[sn][pid] = gls
+        for (sn, pid), asts in real_assists_season.items():
+            assigned_assists_season[sn][pid] = asts
         
         for idx, game in df_missing_games.iterrows():
             game_id = game['game_id']
@@ -235,10 +287,19 @@ def process_world_cup_data(raw_dir: str = "data/raw", processed_dir: str = "data
             else:
                 gk_a = gk_a_pool.iloc[0].to_dict()
             
-            outfield_h = home_pool[home_pool['position'] != 'Goalkeeper'].sort_values(by='market_value_in_eur', ascending=False)
-            outfield_a = away_pool[away_pool['position'] != 'Goalkeeper'].sort_values(by='market_value_in_eur', ascending=False)
+            # Prioritize selecting star players in starting lineups for historical accuracy
+            season_targets = REAL_WORLD_SEASON_STATS.get(game_season, {})
             
+            # For home team:
+            outfield_h_all = home_pool[home_pool['position'] != 'Goalkeeper'].copy()
+            outfield_h_all['is_star'] = outfield_h_all['name'].apply(lambda x: 1 if x in season_targets else 0)
+            outfield_h = outfield_h_all.sort_values(by=['is_star', 'market_value_in_eur'], ascending=[False, False])
             starters_h = [gk_h] + outfield_h.head(10).to_dict('records')
+            
+            # For away team:
+            outfield_a_all = away_pool[away_pool['position'] != 'Goalkeeper'].copy()
+            outfield_a_all['is_star'] = outfield_a_all['name'].apply(lambda x: 1 if x in season_targets else 0)
+            outfield_a = outfield_a_all.sort_values(by=['is_star', 'market_value_in_eur'], ascending=[False, False])
             starters_a = [gk_a] + outfield_a.head(10).to_dict('records')
             
             # Distribute actual match goals to players
@@ -257,45 +318,59 @@ def process_world_cup_data(raw_dir: str = "data/raw", processed_dir: str = "data
                     else: # Attack/Forward
                         base_w = 0.60
                         
-                    # Feedback adjustment
+                    # Feedback adjustment per season
                     name = p['name']
-                    if name in REAL_WORLD_WC_STATS:
-                        target_g, target_a = REAL_WORLD_WC_STATS[name]
+                    pid = p['player_id']
+                    
+                    # Check if player has target stats for this specific season
+                    season_targets = REAL_WORLD_SEASON_STATS.get(game_season, {})
+                    if name in season_targets:
+                        target_g, target_a = season_targets[name]
                         if metric_type == 'goals':
-                            curr_g = assigned_goals.get(p['player_id'], 0)
+                            curr_g = assigned_goals_season[game_season].get(pid, 0)
                             if curr_g < target_g:
                                 base_w += 15.0
                             else:
-                                base_w = 0.0
+                                base_w *= 0.05 ** (curr_g - target_g + 1)
                         elif metric_type == 'assists':
-                            curr_a = assigned_assists.get(p['player_id'], 0)
+                            curr_a = assigned_assists_season[game_season].get(pid, 0)
                             if curr_a < target_a:
                                 base_w += 15.0
                             else:
-                                base_w = 0.0
+                                base_w *= 0.05 ** (curr_a - target_a + 1)
+                    else:
+                        # Discount ordinary (non-star) players exponentially if they exceed 1 goal/assist per season
+                        if metric_type == 'goals':
+                            curr_g = assigned_goals_season[game_season].get(pid, 0)
+                            if curr_g >= 1:
+                                base_w *= 0.05 ** curr_g
+                        elif metric_type == 'assists':
+                            curr_a = assigned_assists_season[game_season].get(pid, 0)
+                            if curr_a >= 1:
+                                base_w *= 0.05 ** curr_a
                     weights.append(base_w)
                 total_w = sum(weights)
                 return [w/total_w for w in weights] if total_w > 0 else [1.0/len(players_list)] * len(players_list)
 
-            # Home Goals Distribution
+            # Home Goals Distribution (looping goal-by-goal to dynamically update the feedback controller)
             h_scorers = []
             if home_goals > 0:
-                h_probs = get_probs(starters_h, 'goals')
-                h_scorers = rng.choice(starters_h, size=home_goals, p=h_probs, replace=True)
-                h_scorers = [p['player_id'] for p in h_scorers]
-                # Increment assigned goals
-                for pid in h_scorers:
-                    assigned_goals[pid] = assigned_goals.get(pid, 0) + 1
+                for _ in range(home_goals):
+                    h_probs = get_probs(starters_h, 'goals')
+                    scorer = rng.choice(starters_h, size=1, p=h_probs)[0]
+                    pid = scorer['player_id']
+                    h_scorers.append(pid)
+                    assigned_goals_season[game_season][pid] = assigned_goals_season[game_season].get(pid, 0) + 1
                     
-            # Away Goals Distribution
+            # Away Goals Distribution (looping goal-by-goal to dynamically update the feedback controller)
             a_scorers = []
             if away_goals > 0:
-                a_probs = get_probs(starters_a, 'goals')
-                a_scorers = rng.choice(starters_a, size=away_goals, p=a_probs, replace=True)
-                a_scorers = [p['player_id'] for p in a_scorers]
-                # Increment assigned goals
-                for pid in a_scorers:
-                    assigned_goals[pid] = assigned_goals.get(pid, 0) + 1
+                for _ in range(away_goals):
+                    a_probs = get_probs(starters_a, 'goals')
+                    scorer = rng.choice(starters_a, size=1, p=a_probs)[0]
+                    pid = scorer['player_id']
+                    a_scorers.append(pid)
+                    assigned_goals_season[game_season][pid] = assigned_goals_season[game_season].get(pid, 0) + 1
                 
             # Helper to generate records
             def add_team_appearances(players_list, team_id, scorer_list, goals_count):
@@ -305,12 +380,13 @@ def process_world_cup_data(raw_dir: str = "data/raw", processed_dir: str = "data
                 if goals_count > 0 and len(assisters) > 0:
                     num_assists = min(goals_count, rng.poisson(0.7 * goals_count))
                     if num_assists > 0:
-                        a_probs = get_probs(assisters, 'assists')
-                        selected_assisters = rng.choice(assisters, size=num_assists, p=a_probs, replace=True)
-                        assister_ids = [p['player_id'] for p in selected_assisters]
-                        # Increment assigned assists
-                        for pid in assister_ids:
-                            assigned_assists[pid] = assigned_assists.get(pid, 0) + 1
+                        # Distribute assists assist-by-assist to dynamically update the feedback controller
+                        for _ in range(num_assists):
+                            a_probs = get_probs(assisters, 'assists')
+                            assister = rng.choice(assisters, size=1, p=a_probs)[0]
+                            pid = assister['player_id']
+                            assister_ids.append(pid)
+                            assigned_assists_season[game_season][pid] = assigned_assists_season[game_season].get(pid, 0) + 1
                         
                 for p in players_list:
                     p_goals = scorer_list.count(p['player_id'])
@@ -384,6 +460,120 @@ def process_world_cup_data(raw_dir: str = "data/raw", processed_dir: str = "data
     df_wc_clubs['total_market_value'] = df_wc_clubs['total_market_value'].fillna(0)
     
     print(f"Synthesized {len(df_wc_clubs)} national team profiles.")
+
+    # 7.5. Apply deterministic player overrides for historical seasons
+    print("Applying historical player overrides for career stats accuracy...")
+    df_wc_app = df_wc_app.merge(df_wc_games[['game_id', 'season']], on='game_id', how='left')
+    df_wc_app['season'] = df_wc_app['season'].astype(float).fillna(0).astype(int)
+    
+    OVERRIDES = {
+        2021: {
+            "Lionel Messi": (7, 3),
+            "Kylian Mbappe": (8, 2),
+            "Harry Kane": (2, 3),
+            "Thomas Muller": (0, 0),
+            "Neymar": (2, 1),
+            "Ivan Perisic": (3, 3),
+            "Antoine Griezmann": (0, 3),
+            "Luka Modric": (0, 0),
+            "Robert Lewandowski": (2, 1),
+            "Angel Di Maria": (1, 1),
+            "Romelu Lukaku": (0, 0),
+            "Eden Hazard": (0, 0),
+            "Ousmane Dembele": (0, 0),
+            "Erling Haaland": (0, 0),
+        },
+        2017: {
+            "Lionel Messi": (1, 2),
+            "Kylian Mbappe": (4, 0),
+            "Cristiano Ronaldo": (4, 0),
+            "Harry Kane": (6, 0),
+            "Thomas Muller": (0, 0),
+            "Neymar": (2, 1),
+            "Ivan Perisic": (3, 1),
+            "Antoine Griezmann": (4, 2),
+            "Eden Hazard": (3, 4),
+            "Luka Modric": (2, 1),
+            "Romelu Lukaku": (4, 1),
+            "Edinson Cavani": (3, 0),
+            "Toni Kroos": (1, 0),
+            "Angel Di Maria": (1, 0),
+            "Ousmane Dembele": (0, 0),
+            "Robert Lewandowski": (0, 0),
+            "Erling Haaland": (0, 0),
+        },
+        2013: {
+            "Lionel Messi": (4, 1),
+            "Thomas Muller": (5, 3),
+            "Cristiano Ronaldo": (1, 1),
+            "Neymar": (4, 1),
+            "James Rodriguez": (6, 2),
+            "Robin van Persie": (4, 0),
+            "Arjen Robben": (3, 1),
+            "Toni Kroos": (2, 4),
+            "Miroslav Klose": (2, 0),
+            "Karim Benzema": (3, 2),
+            "Angel Di Maria": (1, 0),
+            "Luka Modric": (0, 0),
+            "Eden Hazard": (0, 0),
+            "Romelu Lukaku": (1, 0),
+            "Ivan Perisic": (2, 0),
+            "Ousmane Dembele": (0, 0),
+            "Robert Lewandowski": (0, 0),
+            "Erling Haaland": (0, 0),
+        },
+        2009: {
+            "Lionel Messi": (0, 1),
+            "Thomas Muller": (5, 3),
+            "Cristiano Ronaldo": (1, 1),
+            "David Villa": (5, 1),
+            "Wesley Sneijder": (5, 0),
+            "Diego Forlan": (5, 1),
+            "Miroslav Klose": (4, 0),
+            "Arjen Robben": (2, 1),
+            "Robin van Persie": (1, 0),
+            "Toni Kroos": (0, 0),
+            "Angel Di Maria": (0, 0),
+            "Luis Suarez": (3, 0),
+            "Ousmane Dembele": (0, 0),
+            "Robert Lewandowski": (0, 0),
+            "Erling Haaland": (0, 0),
+        },
+        2005: {
+            "Lionel Messi": (1, 1),
+            "Cristiano Ronaldo": (1, 0),
+            "Miroslav Klose": (5, 1),
+            "Thierry Henry": (3, 0),
+            "Zinedine Zidane": (3, 1),
+            "David Villa": (3, 0),
+            "Ronaldo": (3, 0),
+            "Arjen Robben": (1, 0),
+            "Luka Modric": (0, 0),
+            "Zlatan Ibrahimovic": (0, 0),
+            "Ousmane Dembele": (0, 0),
+            "Robert Lewandowski": (0, 0),
+            "Erling Haaland": (0, 0),
+        }
+    }
+    
+    for season, players_dict in OVERRIDES.items():
+        for player_name, (target_g, target_a) in players_dict.items():
+            indices = df_wc_app[(df_wc_app['player_name'] == player_name) & (df_wc_app['season'] == season)].index
+            if len(indices) > 0:
+                df_wc_app.loc[indices, 'goals'] = 0
+                df_wc_app.loc[indices, 'assists'] = 0
+                
+                # Distribute goals
+                for i in range(target_g):
+                    idx = indices[i % len(indices)]
+                    df_wc_app.loc[idx, 'goals'] += 1
+                    
+                # Distribute assists
+                for i in range(target_a):
+                    idx = indices[i % len(indices)]
+                    df_wc_app.loc[idx, 'assists'] += 1
+                    
+    df_wc_app = df_wc_app.drop(columns=['season'])
 
     # 8. Save clean processed CSVs
     print("Saving processed datasets to data/processed/...")

@@ -1,7 +1,7 @@
 """
 FIFA World Cup Player Performance Analytics Dashboard
 ------------------------------------------------------
-A production-quality multi-page Streamlit application for analyzing player
+A clean multi-page Streamlit application for analyzing player
 and team performance across recent FIFA World Cups using SQL, Pandas, and Plotly.
 """
 
@@ -528,7 +528,7 @@ def main():
         # Display rule breakdown
         with st.expander("ℹ️ Read Playing Style Rules and Heuristic Logic"):
             st.markdown("""
-            Instead of black-box Machine Learning algorithms (which are hard to explain during job interviews), this system classifies players using **clear, transparent, rule-based football logic**:
+            Instead of complex ML models algorithms (which are hard to explain during job interviews), this system classifies players using **clear, transparent, basic rules**:
             
             *   **Finisher**: Strikers (Attackers) with a lethal scoring rate (`goals_per_90 >= 0.4`).
             *   **Target Man**: Statured attackers (`height >= 185 cm`) who play as physical focal points.
@@ -577,7 +577,7 @@ def main():
     # 7. INSIGHTS
     elif page == "Insights":
         st.title("💡 Analytical Insights")
-        st.markdown("Advanced analytical findings extracted from the FIFA World Cup database.")
+        st.markdown("Key findings extracted from the FIFA World Cup database.")
         
         col_ins1, col_ins2 = st.columns(2)
         

@@ -65,7 +65,7 @@ def plot_player_radar(player_data: dict, player_name: str, comparison_data: dict
     val1_closed = val1 + [val1[0]]
     categories_closed = categories + [categories[0]]
     
-    # Add primary player with Premium Cyberpunk Cyan
+    # Add primary player with Custom dark Cyan
     fig.add_trace(go.Scatterpolar(
         r=val1_closed,
         theta=categories_closed,

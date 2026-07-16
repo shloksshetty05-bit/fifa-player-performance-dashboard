@@ -164,7 +164,7 @@ def main():
             JOIN clubs c ON a.player_club_id = c.club_id
             WHERE g.season = :season
             GROUP BY a.player_id, a.player_name
-            HAVING COUNT(a.appearance_id) >= 2
+            HAVING COUNT(a.appearance_id) >= 4
             ORDER BY rating DESC LIMIT 1
             """
             mvp_df = db.run_query(engine, mvp_query, {"season": season_filter})
@@ -186,7 +186,7 @@ def main():
             FROM appearances a
             JOIN clubs c ON a.player_club_id = c.club_id
             GROUP BY a.player_id, a.player_name
-            HAVING COUNT(a.appearance_id) >= 3
+            HAVING COUNT(a.appearance_id) >= 10
             ORDER BY rating DESC LIMIT 1
             """
             mvp_df = db.run_query(engine, mvp_query)

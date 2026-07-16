@@ -287,12 +287,24 @@ def plot_position_rating_boxplot(appearances_df: pd.DataFrame) -> plt.Figure:
     """
     fig, ax = plt.subplots(figsize=(8, 4))
     
-    # Capitalize positions for aesthetics
-    df_plot = appearances_df.copy()
-    df_plot['position'] = df_plot['position'].str.capitalize()
+    # Standard color palette for valid football positions
+    colors = {
+        "Goalkeeper": "#ff7f0e", 
+        "Defender": "#1f77b4", 
+        "Midfield": "#2ca02c", 
+        "Attack": "#d62728"
+    }
     
-    # Color palette
-    colors = {"Goalkeeper": "#ff7f0e", "Defender": "#1f77b4", "Midfield": "#2ca02c", "Midfielder": "#2ca02c", "Attack": "#d62728", "Forward": "#d62728"}
+    # Capitalize positions and standardise names
+    df_plot = appearances_df.copy()
+    df_plot['position'] = df_plot['position'].fillna('Unknown').str.capitalize()
+    df_plot['position'] = df_plot['position'].replace({
+        "Midfielder": "Midfield", 
+        "Forward": "Attack"
+    })
+    
+    # Keep only standard positions (excluding any Missing or Unknown values)
+    df_plot = df_plot[df_plot['position'].isin(colors.keys())].copy()
     
     sns.boxplot(
         data=df_plot,

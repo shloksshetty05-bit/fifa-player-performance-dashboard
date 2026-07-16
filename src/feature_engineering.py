@@ -235,8 +235,15 @@ def run_feature_engineering(processed_dir: str = "data/processed") -> None:
     sim_stats = df_app_full.apply(simulate_player_stats, axis=1)
     df_sim = pd.DataFrame(list(sim_stats))
     
+    # Drop already simulated columns if they exist in df_app to prevent duplicates
+    cols_to_drop = [col for col in df_sim.columns if col in df_app.columns]
+    # Also drop previously engineered metric columns to prevent duplicates
+    metric_cols = ['match_rating', 'attacking_contribution', 'defensive_score', 'defensive_contribution', 'pass_accuracy', 'performance_index', 'goals_per_90', 'assists_per_90', 'position']
+    cols_to_drop += [col for col in metric_cols if col in df_app.columns]
+    df_app_clean = df_app.drop(columns=cols_to_drop, errors='ignore')
+    
     # Concatenate simulated columns with original appearances
-    df_engineered = pd.concat([df_app, df_sim], axis=1)
+    df_engineered = pd.concat([df_app_clean, df_sim], axis=1)
     
     # 2. Add player positions back for rating and index calculations
     df_engineered['position'] = df_app_pos['position']

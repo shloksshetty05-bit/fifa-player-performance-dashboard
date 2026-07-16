@@ -48,6 +48,7 @@ class Player(Base):
     current_club_domestic_league_id = Column(String)
     current_club_name = Column(String)
     national_team_id = Column(Integer)
+    is_verified = Column(Integer, default=0)
 
 class Game(Base):
     __tablename__ = 'games'
@@ -181,11 +182,13 @@ def get_top_scorers(engine, season: int = None, limit: int = 10) -> pd.DataFrame
     FROM appearances a
     JOIN games g ON a.game_id = g.game_id
     JOIN clubs c ON a.player_club_id = c.club_id
+    JOIN players p ON a.player_id = p.player_id
+    WHERE p.is_verified = 1
     """
     params = {"limit": limit}
     
     if season:
-        query += " WHERE g.season = :season "
+        query += " AND g.season = :season "
         params["season"] = season
         
     query += """
@@ -208,11 +211,13 @@ def get_top_assists(engine, season: int = None, limit: int = 10) -> pd.DataFrame
     FROM appearances a
     JOIN games g ON a.game_id = g.game_id
     JOIN clubs c ON a.player_club_id = c.club_id
+    JOIN players p ON a.player_id = p.player_id
+    WHERE p.is_verified = 1
     """
     params = {"limit": limit}
     
     if season:
-        query += " WHERE g.season = :season "
+        query += " AND g.season = :season "
         params["season"] = season
         
     query += """
@@ -237,11 +242,12 @@ def get_highest_rated_players(engine, season: int = None, min_minutes: int = 180
     JOIN games g ON a.game_id = g.game_id
     JOIN clubs c ON a.player_club_id = c.club_id
     JOIN players p ON a.player_id = p.player_id
+    WHERE p.is_verified = 1
     """
     params = {"limit": limit, "min_minutes": min_minutes}
     
     if season:
-        query += " WHERE g.season = :season "
+        query += " AND g.season = :season "
         params["season"] = season
         
     query += """
@@ -267,7 +273,7 @@ def get_best_goalkeepers(engine, season: int = None, limit: int = 10) -> pd.Data
     JOIN games g ON a.game_id = g.game_id
     JOIN clubs c ON a.player_club_id = c.club_id
     JOIN players p ON a.player_id = p.player_id
-    WHERE p.position = 'Goalkeeper'
+    WHERE p.position = 'Goalkeeper' AND p.is_verified = 1
     """
     params = {"limit": limit}
     
@@ -299,7 +305,7 @@ def get_best_defenders(engine, season: int = None, limit: int = 10) -> pd.DataFr
     JOIN games g ON a.game_id = g.game_id
     JOIN clubs c ON a.player_club_id = c.club_id
     JOIN players p ON a.player_id = p.player_id
-    WHERE p.position = 'Defender'
+    WHERE p.position = 'Defender' AND p.is_verified = 1
     """
     params = {"limit": limit}
     
@@ -331,7 +337,7 @@ def get_best_midfielders(engine, season: int = None, limit: int = 10) -> pd.Data
     JOIN games g ON a.game_id = g.game_id
     JOIN clubs c ON a.player_club_id = c.club_id
     JOIN players p ON a.player_id = p.player_id
-    WHERE p.position IN ('Midfield', 'Midfielder')
+    WHERE p.position IN ('Midfield', 'Midfielder') AND p.is_verified = 1
     """
     params = {"limit": limit}
     
@@ -362,7 +368,7 @@ def get_best_young_players(engine, season: int = None, limit: int = 10) -> pd.Da
     JOIN games g ON a.game_id = g.game_id
     JOIN clubs c ON a.player_club_id = c.club_id
     JOIN players p ON a.player_id = p.player_id
-    WHERE (g.season - CAST(SUBSTR(p.date_of_birth, 1, 4) AS INTEGER)) <= 23
+    WHERE (g.season - CAST(SUBSTR(p.date_of_birth, 1, 4) AS INTEGER)) <= 23 AND p.is_verified = 1
     """
     params = {"limit": limit}
     

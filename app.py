@@ -12,8 +12,11 @@ from sqlalchemy import text
 from datetime import datetime
 
 # Import project modules
+import importlib
 import src.sql_queries as db
 import src.visualizations as viz
+importlib.reload(db)
+importlib.reload(viz)
 
 # Page config (must be the first Streamlit command)
 st.set_page_config(
@@ -145,14 +148,15 @@ def main():
         if season_filter:
             kpi_query = """
             SELECT 
-                COUNT(DISTINCT player_id) as players,
-                COUNT(DISTINCT player_club_id) as teams,
-                SUM(goals) as goals,
-                SUM(assists) as assists,
-                ROUND(AVG(match_rating), 2) as avg_rating
+                COUNT(DISTINCT a.player_id) as players,
+                COUNT(DISTINCT a.player_club_id) as teams,
+                SUM(a.goals) as goals,
+                SUM(a.assists) as assists,
+                ROUND(AVG(a.match_rating), 2) as avg_rating
             FROM appearances a
             JOIN games g ON a.game_id = g.game_id
-            WHERE g.season = :season
+            JOIN players p ON a.player_id = p.player_id
+            WHERE g.season = :season AND p.is_verified = 1
             """
             kpi_df = db.run_query(engine, kpi_query, {"season": season_filter})
             
@@ -162,7 +166,8 @@ def main():
             FROM appearances a
             JOIN games g ON a.game_id = g.game_id
             JOIN clubs c ON a.player_club_id = c.club_id
-            WHERE g.season = :season
+            JOIN players p ON a.player_id = p.player_id
+            WHERE g.season = :season AND p.is_verified = 1
             GROUP BY a.player_id, a.player_name
             HAVING COUNT(a.appearance_id) >= 4
             ORDER BY rating DESC LIMIT 1
@@ -171,12 +176,14 @@ def main():
         else:
             kpi_query = """
             SELECT 
-                (SELECT COUNT(*) FROM players) as players,
+                (SELECT COUNT(*) FROM players WHERE is_verified = 1) as players,
                 (SELECT COUNT(*) FROM clubs) as teams,
-                SUM(goals) as goals,
-                SUM(assists) as assists,
-                ROUND(AVG(match_rating), 2) as avg_rating
-            FROM appearances
+                SUM(a.goals) as goals,
+                SUM(a.assists) as assists,
+                ROUND(AVG(a.match_rating), 2) as avg_rating
+            FROM appearances a
+            JOIN players p ON a.player_id = p.player_id
+            WHERE p.is_verified = 1
             """
             kpi_df = db.run_query(engine, kpi_query)
             
@@ -185,6 +192,8 @@ def main():
             SELECT a.player_name, c.name as country, ROUND(AVG(a.match_rating), 2) as rating
             FROM appearances a
             JOIN clubs c ON a.player_club_id = c.club_id
+            JOIN players p ON a.player_id = p.player_id
+            WHERE p.is_verified = 1
             GROUP BY a.player_id, a.player_name
             HAVING COUNT(a.appearance_id) >= 10
             ORDER BY rating DESC LIMIT 1
@@ -230,7 +239,7 @@ def main():
         st.markdown("Search and select a player to view their profile, detailed statistics, match ratings, and visual radar charts.")
         
         # Get list of players for dropdown
-        players_list_df = db.run_query(engine, "SELECT player_id, name FROM players ORDER BY name")
+        players_list_df = db.run_query(engine, "SELECT player_id, name FROM players WHERE is_verified = 1 ORDER BY name")
         player_names = players_list_df['name'].tolist()
         
         selected_player_name = st.selectbox("Search Player", player_names)
@@ -378,7 +387,7 @@ def main():
                         AVG(a.performance_index) as performance_index
                     FROM players p
                     JOIN appearances a ON p.player_id = a.player_id
-                    WHERE p.national_team_id = :tid
+                    WHERE p.national_team_id = :tid AND p.is_verified = 1
                     GROUP BY p.player_id, p.name, p.date_of_birth, p.position, p.market_value_in_eur
                 """, {"tid": t1_id})
                 if not t1_players.empty:
@@ -397,7 +406,7 @@ def main():
                         AVG(a.performance_index) as performance_index
                     FROM players p
                     JOIN appearances a ON p.player_id = a.player_id
-                    WHERE p.national_team_id = :tid
+                    WHERE p.national_team_id = :tid AND p.is_verified = 1
                     GROUP BY p.player_id, p.name, p.date_of_birth, p.position, p.market_value_in_eur
                 """, {"tid": t2_id})
                 if not t2_players.empty:
@@ -418,6 +427,7 @@ def main():
         SELECT a.match_rating, p.position, a.goals, a.assists, a.tackles, a.interceptions, a.blocks, a.saves, a.pass_accuracy, a.key_passes, a.dribbles_completed
         FROM appearances a
         JOIN players p ON a.player_id = p.player_id
+        WHERE p.position IN ('Goalkeeper', 'Defender', 'Midfield', 'Attack') AND p.is_verified = 1
         """
         df_all_app = db.run_query(engine, app_full_query)
         
@@ -455,7 +465,7 @@ def main():
                 FROM appearances a
                 JOIN clubs c ON a.player_club_id = c.club_id
                 JOIN players p ON a.player_id = p.player_id
-                WHERE p.position = 'Attack'
+                WHERE p.position = 'Attack' AND p.is_verified = 1
                 GROUP BY a.player_id, a.player_name, c.name
                 HAVING total_minutes >= 180
                 ORDER BY avg_rating DESC
@@ -532,7 +542,7 @@ def main():
             """)
             
         # Select player to classify
-        players_list_df = db.run_query(engine, "SELECT player_id, name FROM players ORDER BY name")
+        players_list_df = db.run_query(engine, "SELECT player_id, name FROM players WHERE is_verified = 1 ORDER BY name")
         player_names = players_list_df['name'].tolist()
         selected_p = st.selectbox("Select Player to Classify", player_names)
         
@@ -590,6 +600,8 @@ def main():
                        ROUND(SUM(a.goals) * 1.0 / SUM(a.shots), 2) AS efficiency 
                 FROM appearances a 
                 JOIN clubs c ON a.player_club_id = c.club_id 
+                JOIN players p ON a.player_id = p.player_id
+                WHERE p.is_verified = 1
                 GROUP BY a.player_id, a.player_name, c.name 
                 HAVING SUM(a.shots) >= 8
                 ORDER BY efficiency DESC LIMIT 1
@@ -605,7 +617,7 @@ def main():
                 FROM players p 
                 JOIN appearances a ON p.player_id = a.player_id 
                 JOIN clubs c ON a.player_club_id = c.club_id 
-                WHERE p.market_value_in_eur > 0 
+                WHERE p.market_value_in_eur > 0 AND p.is_verified = 1
                 GROUP BY p.player_id, p.name, c.name, p.market_value_in_eur 
                 HAVING SUM(a.minutes_played) >= 180 
                 ORDER BY value_ratio DESC LIMIT 1
@@ -626,6 +638,7 @@ def main():
                 SELECT p.position, ROUND(AVG(a.match_rating), 2) as avg_rating 
                 FROM appearances a 
                 JOIN players p ON a.player_id = p.player_id 
+                WHERE p.is_verified = 1
                 GROUP BY p.position 
                 ORDER BY avg_rating DESC
             """)
@@ -639,6 +652,8 @@ def main():
                 FROM appearances a 
                 JOIN games g ON a.game_id = g.game_id 
                 JOIN clubs c ON a.player_club_id = c.club_id 
+                JOIN players p ON a.player_id = p.player_id
+                WHERE p.is_verified = 1
                 ORDER BY a.match_rating DESC, a.goals DESC LIMIT 5
             """)
             st.dataframe(exceptional, use_container_width=True, hide_index=True)

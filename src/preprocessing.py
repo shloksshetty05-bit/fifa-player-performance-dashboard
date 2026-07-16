@@ -178,6 +178,9 @@ def process_world_cup_data(raw_dir: str = "data/raw", processed_dir: str = "data
     for metric in metrics:
         df_wc_app[metric] = df_wc_app[metric].fillna(0).astype(int)
 
+    # Store real player IDs before synthesis starts
+    real_player_ids = set(df_wc_app['player_id'].unique())
+
     # 4. Load Raw Players for mapping
     print("Loading players data...")
     df_players = pd.read_csv(os.path.join(raw_dir, "players.csv.gz"))
@@ -431,6 +434,47 @@ def process_world_cup_data(raw_dir: str = "data/raw", processed_dir: str = "data
         lambda x: x.fillna(x.median() if not x.isna().all() else 1000000)
     )
     df_wc_players['highest_market_value_in_eur'] = df_wc_players['highest_market_value_in_eur'].fillna(df_wc_players['market_value_in_eur'])
+
+    # 6.5. Identify verified World Cup players
+    print("Identifying verified World Cup players (legends and direct scraped appearances)...")
+    # We use the pre-stored real_player_ids variable
+    
+    FAMOUS_LEGENDS = {
+        # Goalkeepers
+        "Manuel Neuer", "Iker Casillas", "Guillermo Ochoa", "Keylor Navas", 
+        "Thibaut Courtois", "Claudio Bravo", "Alisson", "Jordan Pickford", 
+        "Fernando Muslera", "Tim Howard", "Emiliano Martinez", "Wojciech Szczesny",
+        "Marc-Andre ter Stegen", "Yann Sommer", "Kasper Schmeichel", "Gianluigi Buffon",
+        
+        # Defenders
+        "Sergio Ramos", "Gerard Pique", "Mats Hummels", "Philipp Lahm", 
+        "Raphael Varane", "Thiago Silva", "Marquinhos", "Dani Alves", 
+        "Marcelo", "Pepe", "Diego Godin", "Giorgio Chiellini", 
+        "Leonardo Bonucci", "Vincent Kompany", "Toby Alderweireld", 
+        "Jan Vertonghen", "Harry Maguire", "John Stones", "Kyle Walker", 
+        "Jordi Alba", "Nicolas Otamendi", "Virgil van Dijk", "Daley Blind", 
+        "Dejan Lovren", "Javier Mascherano",
+        
+        # Midfielders
+        "Luka Modric", "Toni Kroos", "Bastian Schweinsteiger", "Mesut Ozil", 
+        "Andres Iniesta", "Sergio Busquets", "Cesc Fabregas", "Xabi Alonso", 
+        "Paul Pogba", "N'Golo Kante", "Casemiro", "Fernandinho", 
+        "Kevin De Bruyne", "Christian Eriksen", "Granit Xhaka", "Xherdan Shaqiri", 
+        "Arturo Vidal", "Alexis Sanchez", "Angel Di Maria", "Ivan Perisic",
+        "Mateo Kovacic", "William Carvalho", "Joao Moutinho", "Cesc Fàbregas",
+        
+        # Forwards
+        "Lionel Messi", "Cristiano Ronaldo", "Thomas Muller", "Kylian Mbappe", 
+        "Neymar", "Harry Kane", "Luis Suarez", "Edinson Cavani", "Antoine Griezmann", 
+        "Eden Hazard", "Robert Lewandowski", "Romelu Lukaku", "Miroslav Klose", 
+        "David Villa", "Arjen Robben", "Robin van Persie", "Wesley Sneijder", 
+        "Diego Forlan", "James Rodriguez", "Karim Benzema", "Zlatan Ibrahimovic"
+    }
+    
+    df_wc_players['is_verified'] = df_wc_players.apply(
+        lambda r: 1 if (r['player_id'] in real_player_ids or r['name'] in FAMOUS_LEGENDS) else 0,
+        axis=1
+    )
 
     # 7. Synthesize Clubs/Teams details
     print("Synthesizing national team profiles...")

@@ -60,12 +60,13 @@ def plot_player_radar(player_data: dict, player_name: str, comparison_data: dict
     val1_closed = val1 + [val1[0]]
     categories_closed = categories + [categories[0]]
     
+    # Add primary player with Premium Cyberpunk Cyan
     fig.add_trace(go.Scatterpolar(
         r=val1_closed,
         theta=categories_closed,
         fill='toself',
-        fillcolor='rgba(31, 119, 180, 0.4)',
-        line=dict(color='#1f77b4', width=2),
+        fillcolor='rgba(0, 240, 255, 0.15)',
+        line=dict(color='#00F0FF', width=3),
         name=player_name
     ))
     
@@ -86,28 +87,46 @@ def plot_player_radar(player_data: dict, player_name: str, comparison_data: dict
         ]
         val2_closed = val2 + [val2[0]]
         
+        # Add comparison player with Premium Neon Rose
         fig.add_trace(go.Scatterpolar(
             r=val2_closed,
             theta=categories_closed,
             fill='toself',
-            fillcolor='rgba(214, 39, 40, 0.4)',
-            line=dict(color='#d62728', width=2),
+            fillcolor='rgba(255, 0, 127, 0.15)',
+            line=dict(color='#FF007F', width=3),
             name=comparison_name
         ))
         
     fig.update_layout(
         polar=dict(
+            bgcolor='rgba(255, 255, 255, 0.03)',
             radialaxis=dict(
                 visible=True,
                 range=[0, 100],
-                showticklabels=False
+                showticklabels=True,
+                tickfont=dict(size=8, color='#888888'),
+                gridcolor='rgba(128, 128, 128, 0.15)',
+                linecolor='rgba(128, 128, 128, 0.15)'
+            ),
+            angularaxis=dict(
+                tickfont=dict(size=9, color='#a0a0a0', weight='bold'),
+                gridcolor='rgba(128, 128, 128, 0.15)',
+                linecolor='rgba(128, 128, 128, 0.15)'
             )
         ),
         showlegend=True,
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)',
-        margin=dict(l=30, r=30, t=30, b=30),
-        height=350
+        margin=dict(l=60, r=60, t=50, b=40),
+        height=380,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.1,
+            xanchor="center",
+            x=0.5,
+            font=dict(size=10, color='#888888')
+        )
     )
     return fig
 

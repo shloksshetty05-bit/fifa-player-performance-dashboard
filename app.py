@@ -250,6 +250,8 @@ def main():
             SUM(minutes_played) as minutes,
             ROUND(AVG(match_rating), 2) as avg_rating,
             ROUND(AVG(pass_accuracy), 1) as pass_accuracy,
+            SUM(passes_completed) as passes_completed,
+            SUM(passes_attempted) as passes_attempted,
             SUM(key_passes) as key_passes,
             SUM(tackles) as tackles,
             SUM(interceptions) as interceptions,
@@ -295,7 +297,7 @@ def main():
             col_kpi2.metric("Minutes Played", int(row_stats['minutes']))
             col_kpi3.metric("Goals / Assists", f"{int(row_stats['goals'])} / {int(row_stats['assists'])}")
             col_kpi4.metric("Goals per 90", f"{row_stats['goals_per_90']:.2f}")
-            col_kpi5.metric("Pass Accuracy", f"{row_stats['pass_accuracy']:.1f}%")
+            col_kpi5.metric("Pass Accuracy", f"{row_stats['pass_accuracy']:.1f}%", f"{int(row_stats['passes_completed'])}/{int(row_stats['passes_attempted'])} Passes", delta_color="off")
             
             st.markdown("---")
             

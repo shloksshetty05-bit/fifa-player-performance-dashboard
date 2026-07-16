@@ -82,7 +82,7 @@ def simulate_player_stats(row: pd.Series) -> dict:
             shots_on_target = rng.binomial(n=shots, p=0.40)
             dribbles_completed = rng.poisson(lam=0.5 * scale)
             
-        elif position == 'midfielder':
+        elif position in ['midfield', 'midfielder']:
             tackles = rng.poisson(lam=1.8 * scale)
             interceptions = rng.poisson(lam=1.5 * scale)
             blocks = rng.poisson(lam=0.6 * scale)
@@ -107,6 +107,20 @@ def simulate_player_stats(row: pd.Series) -> dict:
             shots = rng.poisson(lam=3.0 * scale)
             shots_on_target = rng.binomial(n=shots, p=0.45)
             dribbles_completed = rng.poisson(lam=2.2 * scale)
+            
+        else:
+            # Fallback for missing/unknown positions (simulate as Midfielders)
+            tackles = rng.poisson(lam=1.8 * scale)
+            interceptions = rng.poisson(lam=1.5 * scale)
+            blocks = rng.poisson(lam=0.6 * scale)
+            passes_attempted = int(rng.normal(loc=55 * scale, scale=10 * scale))
+            passes_attempted = max(1, passes_attempted)
+            accuracy = 0.85
+            passes_completed = rng.binomial(n=passes_attempted, p=accuracy)
+            key_passes = rng.poisson(lam=1.5 * scale)
+            shots = rng.poisson(lam=1.2 * scale)
+            shots_on_target = rng.binomial(n=shots, p=0.42)
+            dribbles_completed = rng.poisson(lam=1.4 * scale)
 
     # logical consistency adjustments:
     # 1. Shots on target must be at least equal to goals scored

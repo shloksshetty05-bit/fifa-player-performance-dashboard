@@ -367,11 +367,16 @@ def main():
             col_b1, col_b2 = st.columns(2)
             with col_b1:
                 t1_players = db.run_query(engine, """
-                    SELECT p.name, p.age, p.position, p.market_value_in_eur, a.performance_index
+                    SELECT 
+                        p.name, 
+                        COALESCE(2026 - CAST(SUBSTR(p.date_of_birth, 1, 4) AS INTEGER), 27) AS age, 
+                        p.position, 
+                        p.market_value_in_eur, 
+                        AVG(a.performance_index) as performance_index
                     FROM players p
                     JOIN appearances a ON p.player_id = a.player_id
                     WHERE p.national_team_id = :tid
-                    GROUP BY p.player_id
+                    GROUP BY p.player_id, p.name, p.date_of_birth, p.position, p.market_value_in_eur
                 """, {"tid": t1_id})
                 if not t1_players.empty:
                     fig_bubble1 = viz.plot_squad_bubble_chart(t1_players, team1_name)
@@ -381,11 +386,16 @@ def main():
                     
             with col_b2:
                 t2_players = db.run_query(engine, """
-                    SELECT p.name, p.age, p.position, p.market_value_in_eur, a.performance_index
+                    SELECT 
+                        p.name, 
+                        COALESCE(2026 - CAST(SUBSTR(p.date_of_birth, 1, 4) AS INTEGER), 27) AS age, 
+                        p.position, 
+                        p.market_value_in_eur, 
+                        AVG(a.performance_index) as performance_index
                     FROM players p
                     JOIN appearances a ON p.player_id = a.player_id
                     WHERE p.national_team_id = :tid
-                    GROUP BY p.player_id
+                    GROUP BY p.player_id, p.name, p.date_of_birth, p.position, p.market_value_in_eur
                 """, {"tid": t2_id})
                 if not t2_players.empty:
                     fig_bubble2 = viz.plot_squad_bubble_chart(t2_players, team2_name)

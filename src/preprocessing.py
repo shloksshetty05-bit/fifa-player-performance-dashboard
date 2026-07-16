@@ -482,6 +482,20 @@ def process_world_cup_data(raw_dir: str = "data/raw", processed_dir: str = "data
             "Eden Hazard": (0, 0),
             "Ousmane Dembele": (0, 0),
             "Erling Haaland": (0, 0),
+            "Bruno Guimaraes": (0, 0),
+            "Bukayo Saka": (3, 1),
+            "Michael Olise": (0, 0),
+            "Ryan Gravenberch": (0, 0),
+            "Tijjani Reijnders": (0, 0),
+            "Rafael Leao": (2, 0),
+            "Luka Sucic": (0, 0),
+            "Petar Sucic": (0, 0),
+            "Franjo Ivanovic": (0, 0),
+            "Desire Doue": (0, 0),
+            "Hugo Ekitike": (0, 0),
+            "Nico Paz": (0, 0),
+            "Christopher Nkunku": (0, 0),
+            "Nikola Vlasic": (1, 0),
         },
         2017: {
             "Lionel Messi": (1, 2),
@@ -501,6 +515,14 @@ def process_world_cup_data(raw_dir: str = "data/raw", processed_dir: str = "data
             "Ousmane Dembele": (0, 0),
             "Robert Lewandowski": (0, 0),
             "Erling Haaland": (0, 0),
+            "Bruno Guimaraes": (0, 0),
+            "Bukayo Saka": (0, 0),
+            "Michael Olise": (0, 0),
+            "Ryan Gravenberch": (0, 0),
+            "Tijjani Reijnders": (0, 0),
+            "Rafael Leao": (0, 0),
+            "Christopher Nkunku": (0, 0),
+            "Nikola Vlasic": (0, 0),
         },
         2013: {
             "Lionel Messi": (4, 1),
@@ -521,6 +543,10 @@ def process_world_cup_data(raw_dir: str = "data/raw", processed_dir: str = "data
             "Ousmane Dembele": (0, 0),
             "Robert Lewandowski": (0, 0),
             "Erling Haaland": (0, 0),
+            "Bruno Guimaraes": (0, 0),
+            "Bukayo Saka": (0, 0),
+            "Rafael Leao": (0, 0),
+            "Christopher Nkunku": (0, 0),
         },
         2009: {
             "Lionel Messi": (0, 1),
@@ -538,6 +564,7 @@ def process_world_cup_data(raw_dir: str = "data/raw", processed_dir: str = "data
             "Ousmane Dembele": (0, 0),
             "Robert Lewandowski": (0, 0),
             "Erling Haaland": (0, 0),
+            "Bruno Guimaraes": (0, 0),
         },
         2005: {
             "Lionel Messi": (1, 1),
@@ -553,6 +580,7 @@ def process_world_cup_data(raw_dir: str = "data/raw", processed_dir: str = "data
             "Ousmane Dembele": (0, 0),
             "Robert Lewandowski": (0, 0),
             "Erling Haaland": (0, 0),
+            "Bruno Guimaraes": (0, 0),
         }
     }
     

@@ -114,10 +114,13 @@ def process_world_cup_data(raw_dir: str = "data/raw", processed_dir: str = "data
     # 4. Load Raw Players for mapping
     print("Loading players data...")
     df_players = pd.read_csv(os.path.join(raw_dir, "players.csv.gz"))
+    df_players = df_players.drop_duplicates(subset=['player_id'])
     df_players['name'] = df_players['name'].apply(remove_diacritics).str.strip()
     df_players['country_of_citizenship'] = df_players['country_of_citizenship'].apply(remove_diacritics).str.strip()
     # Map citizenship to match team names
     df_players['mapped_citizenship'] = df_players['country_of_citizenship'].apply(lambda x: COUNTRY_MAP.get(x, x))
+    # Parse birth year for age-appropriate era selections
+    df_players['birth_year'] = pd.to_datetime(df_players['date_of_birth'], errors='coerce').dt.year
 
     # 5. Synthesize Missing Appearances
     # Identify games that do not have any player appearances in the dataset
@@ -146,22 +149,59 @@ def process_world_cup_data(raw_dir: str = "data/raw", processed_dir: str = "data
             seed = zlib.crc32(f"{game_id}".encode())
             rng = np.random.default_rng(seed)
             
-            # Fetch players matching citizenship
-            home_pool = df_players[df_players['mapped_citizenship'] == home_name]
-            away_pool = df_players[df_players['mapped_citizenship'] == away_name]
+            # Calculate birth year limits for this game's season to select active players only
+            game_season = int(game['season'])
+            min_birth = game_season - 40
+            max_birth = game_season - 16
             
-            # Fallback to general pool if a country is missing players in Transfermarkt database
+            # Fetch players matching citizenship and active age range
+            home_pool = df_players[
+                (df_players['mapped_citizenship'] == home_name) & 
+                (df_players['birth_year'] >= min_birth) & 
+                (df_players['birth_year'] <= max_birth)
+            ]
+            away_pool = df_players[
+                (df_players['mapped_citizenship'] == away_name) & 
+                (df_players['birth_year'] >= min_birth) & 
+                (df_players['birth_year'] <= max_birth)
+            ]
+            
+            # Fallback to general pool (respecting the active age range) if a country lacks players
             if len(home_pool) < 14:
-                home_pool = df_players[df_players['position'] != 'Goalkeeper'].head(40)
+                home_pool = df_players[
+                    (df_players['position'] != 'Goalkeeper') & 
+                    (df_players['birth_year'] >= min_birth) & 
+                    (df_players['birth_year'] <= max_birth)
+                ].head(40)
             if len(away_pool) < 14:
-                away_pool = df_players[df_players['position'] != 'Goalkeeper'].head(40)
+                away_pool = df_players[
+                    (df_players['position'] != 'Goalkeeper') & 
+                    (df_players['birth_year'] >= min_birth) & 
+                    (df_players['birth_year'] <= max_birth)
+                ].head(40)
                 
             # Starters selection: 1 Goalkeeper and 10 Outfield players (prioritizing high market value)
             gk_h_pool = home_pool[home_pool['position'] == 'Goalkeeper']
             gk_a_pool = away_pool[away_pool['position'] == 'Goalkeeper']
             
-            gk_h = gk_h_pool.iloc[0].to_dict() if not gk_h_pool.empty else df_players[df_players['position'] == 'Goalkeeper'].iloc[0].to_dict()
-            gk_a = gk_a_pool.iloc[0].to_dict() if not gk_a_pool.empty else df_players[df_players['position'] == 'Goalkeeper'].iloc[1].to_dict()
+            # Fallback GKs must also match the age era
+            fallback_gk_pool = df_players[
+                (df_players['position'] == 'Goalkeeper') & 
+                (df_players['birth_year'] >= min_birth) & 
+                (df_players['birth_year'] <= max_birth)
+            ]
+            if fallback_gk_pool.empty:
+                fallback_gk_pool = df_players[df_players['position'] == 'Goalkeeper']
+                
+            gk_h = gk_h_pool.iloc[0].to_dict() if not gk_h_pool.empty else fallback_gk_pool.iloc[0].to_dict()
+            if gk_a_pool.empty:
+                # Exclude the home goalkeeper to prevent duplicates
+                fallback_gk_a_pool = fallback_gk_pool[fallback_gk_pool['player_id'] != gk_h['player_id']]
+                if fallback_gk_a_pool.empty:
+                    fallback_gk_a_pool = df_players[(df_players['position'] == 'Goalkeeper') & (df_players['player_id'] != gk_h['player_id'])]
+                gk_a = fallback_gk_a_pool.iloc[0].to_dict()
+            else:
+                gk_a = gk_a_pool.iloc[0].to_dict()
             
             outfield_h = home_pool[home_pool['position'] != 'Goalkeeper'].sort_values(by='market_value_in_eur', ascending=False)
             outfield_a = away_pool[away_pool['position'] != 'Goalkeeper'].sort_values(by='market_value_in_eur', ascending=False)
@@ -286,6 +326,11 @@ def process_world_cup_data(raw_dir: str = "data/raw", processed_dir: str = "data
 
     # 8. Save clean processed CSVs
     print("Saving processed datasets to data/processed/...")
+    df_wc_app = df_wc_app.drop_duplicates(subset=['appearance_id'])
+    df_wc_players = df_wc_players.drop_duplicates(subset=['player_id'])
+    df_wc_clubs = df_wc_clubs.drop_duplicates(subset=['club_id'])
+    df_wc_games = df_wc_games.drop_duplicates(subset=['game_id'])
+    
     df_wc_games.to_csv(os.path.join(processed_dir, "games.csv"), index=False)
     df_wc_app.to_csv(os.path.join(processed_dir, "appearances.csv"), index=False)
     df_wc_players.to_csv(os.path.join(processed_dir, "players.csv"), index=False)

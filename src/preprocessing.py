@@ -136,13 +136,19 @@ def download_raw_data(raw_dir: str = "data/raw") -> None:
 
 def process_world_cup_data(raw_dir: str = "data/raw", processed_dir: str = "data/processed") -> None:
     """
-    Reads raw data, filters for World Cups, cleans columns, standardizes names,
-    synthesizes missing historical appearances, and saves outputs.
+    This is my main function to clean the Transfermarkt data.
+    It does a few things:
+    1. Loads the raw CSV files.
+    2. Keeps only World Cup matches.
+    3. Cleans up player names (replaces accents/diacritics).
+    4. Simulates lineups for older games since the raw data is missing them.
     """
+    # Create the folder where I'll save the cleaned data
     os.makedirs(processed_dir, exist_ok=True)
     print("--- Processing and Cleaning Datasets ---")
     
-    # 1. Verify competition
+    # --- Step 1: Check the competition ---
+    # First, I'm loading the competitions file to verify 'FIWC' (World Cup ID) is actually there.
     print("Loading competitions data...")
     df_competitions = pd.read_csv(os.path.join(raw_dir, "competitions.csv.gz"))
     wc_exists = df_competitions[df_competitions['competition_id'] == 'FIWC']
@@ -151,49 +157,58 @@ def process_world_cup_data(raw_dir: str = "data/raw", processed_dir: str = "data
     else:
         print(f"Found competition: {wc_exists.iloc[0]['name']} (ID: FIWC)")
 
-    # 2. Load Games
+    # --- Step 2: Load and Clean the Match List ---
+    # Here, I'm loading all games and keeping only World Cup games.
     print("Loading games data...")
     df_games = pd.read_csv(os.path.join(raw_dir, "games.csv.gz"))
     df_wc_games = df_games[df_games['competition_id'] == 'FIWC'].copy()
     print(f"Filtered {len(df_wc_games)} World Cup matches.")
     
-    # Clean games
+    # Some games have missing attendance values. I'll fill them using the median for that season.
+    # If the whole column is empty, I'll default to 30,000.
     df_wc_games['attendance'] = df_wc_games.groupby('season')['attendance'].transform(
         lambda x: x.fillna(x.median() if not x.isna().all() else 30000)
     )
+    # If a referee name is missing, I'll just write 'Unknown Referee' so it doesn't show up as NaN.
     df_wc_games['referee'] = df_wc_games['referee'].fillna("Unknown Referee")
+    # I noticed that country names sometimes have accents, which breaks merges. I'll remove them here.
     df_wc_games['home_club_name'] = df_wc_games['home_club_name'].apply(remove_diacritics).str.strip()
     df_wc_games['away_club_name'] = df_wc_games['away_club_name'].apply(remove_diacritics).str.strip()
 
-    # 3. Load Appearances
+    # --- Step 3: Load and Clean Appearances ---
+    # Now I'm loading the player appearances table for these World Cup games.
     print("Loading appearances data...")
     wc_game_ids = set(df_wc_games['game_id'].unique())
     df_app = pd.read_csv(os.path.join(raw_dir, "appearances.csv.gz"))
     df_wc_app = df_app[df_app['game_id'].isin(wc_game_ids)].copy()
     print(f"Filtered {len(df_wc_app)} real player appearances in World Cup matches.")
     
-    # Standardize player names in appearances
+    # I'll clean up player names and make sure missing stats (like goals or assists) are set to 0.
     df_wc_app['player_name'] = df_wc_app['player_name'].apply(remove_diacritics).str.strip()
     metrics = ['goals', 'assists', 'yellow_cards', 'red_cards', 'minutes_played']
     for metric in metrics:
         df_wc_app[metric] = df_wc_app[metric].fillna(0).astype(int)
 
-    # Store real player IDs before synthesis starts
+    # I'll save these player IDs. I'll use them later to mark which players are verified.
     real_player_ids = set(df_wc_app['player_id'].unique())
 
-    # 4. Load Raw Players for mapping
+    # --- Step 4: Load and Clean Player Profiles ---
+    # I am loading players data here and cleaning up names, citizenship countries, and birth years.
     print("Loading players data...")
     df_players = pd.read_csv(os.path.join(raw_dir, "players.csv.gz"))
     df_players = df_players.drop_duplicates(subset=['player_id'])
     df_players['name'] = df_players['name'].apply(remove_diacritics).str.strip()
     df_players['country_of_citizenship'] = df_players['country_of_citizenship'].apply(remove_diacritics).str.strip()
-    # Map citizenship to match team names
+    
+    # Map country names to match national team names (e.g. 'United States' becomes 'USA' so they match the clubs table)
     df_players['mapped_citizenship'] = df_players['country_of_citizenship'].apply(lambda x: COUNTRY_MAP.get(x, x))
-    # Parse birth year for age-appropriate era selections
+    # Extract the birth year from date_of_birth so I can calculate player ages later in the pipeline
     df_players['birth_year'] = pd.to_datetime(df_players['date_of_birth'], errors='coerce').dt.year
 
-    # 5. Synthesize Missing Appearances
-    # Identify games that do not have any player appearances in the dataset
+    # --- Step 5: Generate Missing Match Appearances ---
+    # Since Transfermarkt only has complete player lineup logs for the 2022 World Cup,
+    # older matches exist but don't have player lineups in the raw data.
+    # To fix this, I find which World Cup games lack appearance logs in the raw data.
     real_app_games = set(df_wc_app['game_id'].unique())
     missing_app_games = wc_game_ids.difference(real_app_games)
     print(f"Games lacking appearance logs in dataset: {len(missing_app_games)}")
@@ -204,10 +219,8 @@ def process_world_cup_data(raw_dir: str = "data/raw", processed_dir: str = "data
         
         synthetic_apps = []
         
-        # Track season goals/assists for ordinary players and season stars to prevent era saturation
-        df_wc_app_season = df_wc_app.merge(df_wc_games[['game_id', 'season']], on='game_id', how='left')
-        
-        # Track season goals/assists for ordinary players to prevent era saturation
+        # I'll map the real-world tournament goals/assists per player in appearances first.
+        # This prevents our simulated stats from overshooting or showing wrong counts for stars.
         df_wc_app_season = df_wc_app.merge(df_wc_games[['game_id', 'season']], on='game_id', how='left')
         real_goals_season = df_wc_app_season.groupby(['season', 'player_id'])['goals'].sum().to_dict()
         real_assists_season = df_wc_app_season.groupby(['season', 'player_id'])['assists'].sum().to_dict()
@@ -221,6 +234,7 @@ def process_world_cup_data(raw_dir: str = "data/raw", processed_dir: str = "data
         for (sn, pid), asts in real_assists_season.items():
             assigned_assists_season[sn][pid] = asts
         
+        # I'll loop through each game that is missing lineup logs and build a squad for them
         for idx, game in df_missing_games.iterrows():
             game_id = game['game_id']
             home_name = COUNTRY_MAP.get(game['home_club_name'], game['home_club_name'])
@@ -232,16 +246,17 @@ def process_world_cup_data(raw_dir: str = "data/raw", processed_dir: str = "data
             home_goals = int(game['home_club_goals'])
             away_goals = int(game['away_club_goals'])
             
-            # Seed based on game_id to make generation deterministic
+            # I'll seed the random number generator using the game_id.
+            # This makes sure that the generated lineups don't change every time I run the code.
             seed = zlib.crc32(f"{game_id}".encode())
             rng = np.random.default_rng(seed)
             
-            # Calculate birth year limits for this game's season to select active players only
+            # Calculate birth year limits for this season (players must be between 16 and 40 years old)
             game_season = int(game['season'])
             min_birth = game_season - 40
             max_birth = game_season - 16
             
-            # Fetch players matching citizenship and active age range
+            # Grab all players from this country who fit the age range for this season
             home_pool = df_players[
                 (df_players['mapped_citizenship'] == home_name) & 
                 (df_players['birth_year'] >= min_birth) & 

@@ -1,8 +1,8 @@
 """
 Visualizations Module
 ---------------------
-Houses plotting functions using Plotly for interactive dashboard charts
-and Matplotlib/Seaborn for clean static analytical charts.
+This module creates all the charts for the dashboard.
+It uses Plotly for interactive web charts, and Matplotlib/Seaborn for clean static plots.
 """
 
 import matplotlib.pyplot as plt
@@ -12,13 +12,17 @@ import plotly.express as px
 import pandas as pd
 import numpy as np
 
-# Set seaborn style for clean, professional aesthetics
+# Set up Seaborn's theme for clean, white background plots
 sns.set_theme(style="whitegrid")
 plt.rcParams['figure.facecolor'] = '#ffffff'
 plt.rcParams['axes.facecolor'] = '#ffffff'
 
-# Helper to safely extract float values and avoid TypeError with None/NaN
 def get_val(d: dict, key: str, default: float = 0.0) -> float:
+    """
+    Safely retrieves a numeric value from a dictionary.
+    If the value is missing, None, or NaN (Not a Number), it returns the default value (0.0).
+    This keeps the charts from crashing if some player stats are missing.
+    """
     val = d.get(key)
     if val is None or (isinstance(val, float) and np.isnan(val)):
         return default
@@ -31,8 +35,8 @@ def get_val(d: dict, key: str, default: float = 0.0) -> float:
 
 def plot_player_radar(player_data: dict, player_name: str, comparison_data: dict = None, comparison_name: str = None) -> go.Figure:
     """
-    Generates an interactive radar chart. Standardizes metrics to a 0-100 scale
-    representing percentile/performance levels.
+    Draws an interactive radar (spider) chart to compare player stats.
+    Each stat is scaled between 0 and 100 so they fit nicely on the same circular grid.
     """
     categories = [
         'Goals per 90', 'Assists per 90', 'Key Passes', 
@@ -41,17 +45,20 @@ def plot_player_radar(player_data: dict, player_name: str, comparison_data: dict
     
     fig = go.Figure()
     
-    # Extract values safely for primary player
+    # --- Primary Player Data Extraction ---
+    # We sum tackles, interceptions, and blocks to get the total 'Defensive Actions'
     tackles1 = get_val(player_data, 'tackles')
     interceptions1 = get_val(player_data, 'interceptions')
     blocks1 = get_val(player_data, 'blocks')
     def_actions1 = tackles1 + interceptions1 + blocks1
     
+    # Calculate average per-game stats by dividing totals by the number of matches played
     matches1 = max(1.0, get_val(player_data, 'matches'))
     avg_kp1 = get_val(player_data, 'key_passes') / matches1
     avg_drib1 = get_val(player_data, 'dribbles_completed') / matches1
     avg_def1 = def_actions1 / matches1
     
+    # Build the 6-dimension stats array scaled to a 0-100 range
     val1 = [
         min(100.0, get_val(player_data, 'goals_per_90') * 100),
         min(100.0, get_val(player_data, 'assists_per_90') * 100),

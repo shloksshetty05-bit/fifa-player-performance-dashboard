@@ -117,23 +117,27 @@ class Appearance(Base):
 # ----------------- Database Management Helper Functions -----------------
 
 def get_db_engine(db_path: str = "database/fifa_worldcup.db") -> create_engine:
-    """Creates and returns a SQLAlchemy connection engine."""
+    """
+    Creates and returns a SQLAlchemy connection object (engine) for our SQLite database file.
+    It automatically makes sure the database directory exists first.
+    """
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
     return create_engine(f"sqlite:///{db_path}")
 
 def load_data_to_sqlite(db_path: str = "database/fifa_worldcup.db", processed_dir: str = "data/processed") -> None:
     """
-    Creates SQLite tables according to declarative schema and imports processed CSV data,
-    filtering columns to match schema definitions exactly.
+    Recreates SQLite tables according to our declarative schema and imports processed CSV data.
+    It filters CSV columns to match schema definitions exactly.
     """
+    # Get the SQLite connection engine
     engine = get_db_engine(db_path)
     
-    # Drop and recreate tables to ensure schema is clean
+    # Drop all existing tables and create fresh ones to make sure we don't have duplicate data
     print("Recreating database tables...")
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
     
-    # Map CSV files to SQLAlchemy models and tables
+    # Map CSV files to SQLAlchemy classes and table names in SQLite
     model_mappings = {
         "clubs.csv": (Team, "clubs"),
         "players.csv": (Player, "players"),
@@ -141,6 +145,7 @@ def load_data_to_sqlite(db_path: str = "database/fifa_worldcup.db", processed_di
         "appearances.csv": (Appearance, "appearances")
     }
     
+    # Loop through each CSV file, clean up its columns, and load it into the database
     print("Loading data from processed CSVs...")
     for csv_file, (model_class, table_name) in model_mappings.items():
         filepath = os.path.join(processed_dir, csv_file)
@@ -149,20 +154,23 @@ def load_data_to_sqlite(db_path: str = "database/fifa_worldcup.db", processed_di
             
         df = pd.read_csv(filepath)
         
-        # Get target columns from SQLAlchemy model table
+        # Get target columns from SQLAlchemy model table (to filter out any extra columns)
         table_columns = [c.name for c in model_class.__table__.columns]
         
-        # Filter dataframe columns to only keep those defined in SQLAlchemy model
+        # Keep only the columns that actually exist in the SQLite database schema
         df_filtered = df[[col for col in table_columns if col in df.columns]].copy()
         
-        # Import to SQL
+        # Write the clean data directly to the SQLite table
         df_filtered.to_sql(table_name, con=engine, if_exists="append", index=False)
         print(f"Loaded {len(df_filtered)} records into table '{table_name}' (Matched columns: {df_filtered.shape[1]}/{len(table_columns)}).")
         
     print("Database initialization complete.")
 
 def run_query(engine, sql_string: str, params: dict = None) -> pd.DataFrame:
-    """Executes a raw SQL query and returns results in a Pandas DataFrame."""
+    """
+    A helper function to run raw SQL queries easily.
+    It connects to the database, runs the query with parameters, and returns the result as a Pandas DataFrame.
+    """
     with engine.connect() as conn:
         result = conn.execute(text(sql_string), params or {})
         return pd.DataFrame(result.all(), columns=result.keys())

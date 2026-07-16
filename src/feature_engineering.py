@@ -1,9 +1,9 @@
 """
 Feature Engineering Module
 --------------------------
-Calculates standard football performance metrics, simulates missing match events
-(tackles, passes, saves) deterministically, and computes attacking/defensive contribution
-scores, match ratings, and a custom performance index.
+This script calculates performance metrics and simulates match events (like passes, tackles, and saves) 
+for players. Since Transfermarkt is missing in-game event stats for historical World Cups, we run 
+a position-based simulation so that every player has logical, complete stats for the dashboard.
 """
 
 import os
@@ -13,8 +13,9 @@ import numpy as np
 
 def get_seeded_generator(player_id: int, game_id: int) -> np.random.Generator:
     """
-    Returns a deterministic NumPy random generator based on a CRC32 hash of player_id and game_id.
-    This guarantees that simulated stats are identical across runs.
+    Creates a random number generator that is locked (seeded) to a specific player and game.
+    Because the seed is generated from the player_id and game_id, the simulated stats (like passes
+    or tackles) will be exactly the same every time we run the pipeline, making it fully reproducible.
     """
     seed_str = f"{player_id}_{game_id}"
     seed = zlib.crc32(seed_str.encode('utf-8'))
@@ -22,21 +23,21 @@ def get_seeded_generator(player_id: int, game_id: int) -> np.random.Generator:
 
 def simulate_player_stats(row: pd.Series) -> dict:
     """
-    Simulates detailed match events for a single appearance based on player position
-    and minutes played, ensuring logical consistency (e.g. shots >= shots_on_target >= goals).
+    Simulates detailed match events for a single appearance based on the player's position
+    and how many minutes they played. It ensures logical consistency (e.g. shots >= shots_on_target >= goals).
     """
     player_id = int(row['player_id'])
     game_id = int(row['game_id'])
     position = str(row['position']).lower()
     mins = int(row['minutes_played'])
     
-    # Get seeded random generator
+    # Get our player-and-game locked random number generator
     rng = get_seeded_generator(player_id, game_id)
     
-    # Scale factor based on minutes played (90 minutes is standard base)
+    # Scale simulated stats by minutes played (90 minutes is the standard baseline of 1.0)
     scale = mins / 90.0 if mins > 0 else 0.0
     
-    # Initialize all simulated fields
+    # Initialize all stats to 0
     saves = 0
     tackles = 0
     interceptions = 0
@@ -48,19 +49,20 @@ def simulate_player_stats(row: pd.Series) -> dict:
     shots_on_target = 0
     dribbles_completed = 0
     
-    # Calculate goals conceded based on game score and home/away team
+    # Calculate goals conceded and clean sheets for defensive players
     goals_conceded = 0
     if position in ['goalkeeper', 'defender']:
-        # If player represented home team, they conceded away team goals
+        # If the player is on the home team, they conceded the away team's goals, and vice versa
         if row['player_club_id'] == row['home_club_id']:
             goals_conceded = int(row['away_club_goals'])
         else:
             goals_conceded = int(row['home_club_goals'])
             
-    # Clean sheet calculation
+    # Clean sheet is 1 if the player played at least 45 minutes and conceded 0 goals
     clean_sheet = 1 if (position in ['goalkeeper', 'defender'] and goals_conceded == 0 and mins >= 45) else 0
 
     if mins > 0:
+        # Goalkeepers: high saves, lower/medium passes with 65% accuracy, no tackles/dribbles
         if position == 'goalkeeper':
             saves = rng.poisson(lam=3.2 * scale)
             passes_attempted = int(rng.normal(loc=18 * scale, scale=4 * scale))
@@ -69,6 +71,7 @@ def simulate_player_stats(row: pd.Series) -> dict:
             passes_completed = rng.binomial(n=passes_attempted, p=accuracy)
             key_passes = rng.poisson(lam=0.01 * scale)
             
+        # Defenders: high tackles, interceptions, and blocks; high passing volume with 82% accuracy
         elif position == 'defender':
             tackles = rng.poisson(lam=2.8 * scale)
             interceptions = rng.poisson(lam=2.2 * scale)
@@ -82,6 +85,7 @@ def simulate_player_stats(row: pd.Series) -> dict:
             shots_on_target = rng.binomial(n=shots, p=0.40)
             dribbles_completed = rng.poisson(lam=0.5 * scale)
             
+        # Midfielders: highest passing volume with 85% accuracy; moderate tackles and key passes
         elif position in ['midfield', 'midfielder']:
             tackles = rng.poisson(lam=1.8 * scale)
             interceptions = rng.poisson(lam=1.5 * scale)
@@ -95,6 +99,7 @@ def simulate_player_stats(row: pd.Series) -> dict:
             shots_on_target = rng.binomial(n=shots, p=0.42)
             dribbles_completed = rng.poisson(lam=1.4 * scale)
             
+        # Attackers: high shots and dribbles; lower passing with 75% accuracy; very few tackles
         elif position in ['attack', 'forward']:
             tackles = rng.poisson(lam=0.8 * scale)
             interceptions = rng.poisson(lam=0.4 * scale)

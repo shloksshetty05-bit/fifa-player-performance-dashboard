@@ -253,6 +253,7 @@ def main():
             SUM(passes_completed) as passes_completed,
             SUM(passes_attempted) as passes_attempted,
             SUM(key_passes) as key_passes,
+            SUM(dribbles_completed) as dribbles_completed,
             SUM(tackles) as tackles,
             SUM(interceptions) as interceptions,
             SUM(blocks) as blocks,

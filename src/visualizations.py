@@ -47,13 +47,18 @@ def plot_player_radar(player_data: dict, player_name: str, comparison_data: dict
     blocks1 = get_val(player_data, 'blocks')
     def_actions1 = tackles1 + interceptions1 + blocks1
     
+    matches1 = max(1.0, get_val(player_data, 'matches'))
+    avg_kp1 = get_val(player_data, 'key_passes') / matches1
+    avg_drib1 = get_val(player_data, 'dribbles_completed') / matches1
+    avg_def1 = def_actions1 / matches1
+    
     val1 = [
         min(100.0, get_val(player_data, 'goals_per_90') * 100),
         min(100.0, get_val(player_data, 'assists_per_90') * 100),
-        min(100.0, (get_val(player_data, 'key_passes') / 4.0) * 100),
-        min(100.0, (get_val(player_data, 'dribbles_completed') / 4.0) * 100),
+        min(100.0, (avg_kp1 / 4.0) * 100),
+        min(100.0, (avg_drib1 / 4.0) * 100),
         get_val(player_data, 'pass_accuracy'),
-        min(100.0, (def_actions1 / 6.0) * 100)
+        min(100.0, (avg_def1 / 6.0) * 100)
     ]
     
     # Close the radar loop
@@ -77,13 +82,18 @@ def plot_player_radar(player_data: dict, player_name: str, comparison_data: dict
         blocks2 = get_val(comparison_data, 'blocks')
         def_actions2 = tackles2 + interceptions2 + blocks2
         
+        matches2 = max(1.0, get_val(comparison_data, 'matches'))
+        avg_kp2 = get_val(comparison_data, 'key_passes') / matches2
+        avg_drib2 = get_val(comparison_data, 'dribbles_completed') / matches2
+        avg_def2 = def_actions2 / matches2
+        
         val2 = [
             min(100.0, get_val(comparison_data, 'goals_per_90') * 100),
             min(100.0, get_val(comparison_data, 'assists_per_90') * 100),
-            min(100.0, (get_val(comparison_data, 'key_passes') / 4.0) * 100),
-            min(100.0, (get_val(comparison_data, 'dribbles_completed') / 4.0) * 100),
+            min(100.0, (avg_kp2 / 4.0) * 100),
+            min(100.0, (avg_drib2 / 4.0) * 100),
             get_val(comparison_data, 'pass_accuracy'),
-            min(100.0, (def_actions2 / 6.0) * 100)
+            min(100.0, (avg_def2 / 6.0) * 100)
         ]
         val2_closed = val2 + [val2[0]]
         

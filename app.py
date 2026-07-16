@@ -435,7 +435,7 @@ def main():
                 SELECT 
                     a.player_name, 
                     c.name AS country, 
-                    SUM(a.minutes_played) AS minutes_played,
+                    SUM(a.minutes_played) AS total_minutes,
                     SUM(a.goals) AS goals,
                     SUM(a.assists) AS assists,
                     ROUND(AVG(a.match_rating), 2) AS avg_rating
@@ -443,8 +443,8 @@ def main():
                 JOIN clubs c ON a.player_club_id = c.club_id
                 JOIN players p ON a.player_id = p.player_id
                 WHERE p.position = 'Attack'
-                GROUP BY a.player_id, a.player_name
-                HAVING minutes_played >= 180
+                GROUP BY a.player_id, a.player_name, c.name
+                HAVING total_minutes >= 180
                 ORDER BY avg_rating DESC
                 LIMIT 5
                 """

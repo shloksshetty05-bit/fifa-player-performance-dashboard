@@ -263,7 +263,7 @@ def plot_position_rating_boxplot(appearances_df: pd.DataFrame) -> plt.Figure:
     df_plot['position'] = df_plot['position'].str.capitalize()
     
     # Color palette
-    colors = {"Goalkeeper": "#ff7f0e", "Defender": "#1f77b4", "Midfielder": "#2ca02c", "Attack": "#d62728", "Forward": "#d62728"}
+    colors = {"Goalkeeper": "#ff7f0e", "Defender": "#1f77b4", "Midfield": "#2ca02c", "Midfielder": "#2ca02c", "Attack": "#d62728", "Forward": "#d62728"}
     
     sns.boxplot(
         data=df_plot,

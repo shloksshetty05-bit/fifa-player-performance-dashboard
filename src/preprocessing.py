@@ -37,6 +37,36 @@ COUNTRY_MAP = {
     "Serbia and Montenegro": "Serbia"
 }
 
+# Target World Cup goals and assists for top stars to ensure real-world accuracy
+REAL_WORLD_WC_STATS = {
+    "Lionel Messi": (13, 8),
+    "Kylian Mbappe": (12, 3),
+    "Thomas Muller": (10, 6),
+    "Cristiano Ronaldo": (8, 2),
+    "Neymar": (8, 3),
+    "Harry Kane": (8, 3),
+    "Luis Suarez": (7, 4),
+    "Ivan Perisic": (6, 5),
+    "James Rodriguez": (6, 2),
+    "Antoine Griezmann": (6, 3),
+    "Miroslav Klose": (16, 5),
+    "Ronaldo": (15, 5),
+    "Thierry Henry": (6, 2),
+    "Zinedine Zidane": (5, 3),
+    "David Villa": (9, 3),
+    "Robin van Persie": (6, 2),
+    "Arjen Robben": (6, 6),
+    "Wesley Sneijder": (6, 4),
+    "Diego Forlan": (6, 1),
+    "Toni Kroos": (3, 4),
+    "Mesut Ozil": (2, 4),
+    "Romelu Lukaku": (5, 1),
+    "Edinson Cavani": (5, 0),
+    "Eden Hazard": (3, 4),
+    "Luka Modric": (2, 1),
+    "Robert Lewandowski": (2, 1),
+}
+
 def remove_diacritics(text: str) -> str:
     """Removes accents and diacritics from a string."""
     if not isinstance(text, str):
@@ -133,6 +163,8 @@ def process_world_cup_data(raw_dir: str = "data/raw", processed_dir: str = "data
         df_missing_games = df_wc_games[df_wc_games['game_id'].isin(missing_app_games)].copy()
         
         synthetic_apps = []
+        assigned_goals = df_wc_app.groupby('player_id')['goals'].sum().to_dict()
+        assigned_assists = df_wc_app.groupby('player_id')['assists'].sum().to_dict()
         
         for idx, game in df_missing_games.iterrows():
             game_id = game['game_id']
@@ -211,35 +243,59 @@ def process_world_cup_data(raw_dir: str = "data/raw", processed_dir: str = "data
             
             # Distribute actual match goals to players
             # Starters receive higher probability to score, weighted by position (Attack > Midfield > Defender)
-            def get_probs(players_list):
+            # Controlled by a feedback loop to match real-world historical records for top stars
+            def get_probs(players_list, metric_type='goals'):
                 weights = []
                 for p in players_list:
                     pos = str(p['position']).lower()
                     if pos == 'goalkeeper':
-                        weights.append(0.0)
+                        base_w = 0.0
                     elif pos == 'defender':
-                        weights.append(0.08)
+                        base_w = 0.08
                     elif pos == 'midfield':
-                        weights.append(0.32)
+                        base_w = 0.32
                     else: # Attack/Forward
-                        weights.append(0.60)
-                # Normalize weights
+                        base_w = 0.60
+                        
+                    # Feedback adjustment
+                    name = p['name']
+                    if name in REAL_WORLD_WC_STATS:
+                        target_g, target_a = REAL_WORLD_WC_STATS[name]
+                        if metric_type == 'goals':
+                            curr_g = assigned_goals.get(p['player_id'], 0)
+                            if curr_g < target_g:
+                                base_w += 15.0
+                            else:
+                                base_w = 0.0
+                        elif metric_type == 'assists':
+                            curr_a = assigned_assists.get(p['player_id'], 0)
+                            if curr_a < target_a:
+                                base_w += 15.0
+                            else:
+                                base_w = 0.0
+                    weights.append(base_w)
                 total_w = sum(weights)
                 return [w/total_w for w in weights] if total_w > 0 else [1.0/len(players_list)] * len(players_list)
 
             # Home Goals Distribution
             h_scorers = []
             if home_goals > 0:
-                h_probs = get_probs(starters_h)
+                h_probs = get_probs(starters_h, 'goals')
                 h_scorers = rng.choice(starters_h, size=home_goals, p=h_probs, replace=True)
                 h_scorers = [p['player_id'] for p in h_scorers]
-                
+                # Increment assigned goals
+                for pid in h_scorers:
+                    assigned_goals[pid] = assigned_goals.get(pid, 0) + 1
+                    
             # Away Goals Distribution
             a_scorers = []
             if away_goals > 0:
-                a_probs = get_probs(starters_a)
+                a_probs = get_probs(starters_a, 'goals')
                 a_scorers = rng.choice(starters_a, size=away_goals, p=a_probs, replace=True)
                 a_scorers = [p['player_id'] for p in a_scorers]
+                # Increment assigned goals
+                for pid in a_scorers:
+                    assigned_goals[pid] = assigned_goals.get(pid, 0) + 1
                 
             # Helper to generate records
             def add_team_appearances(players_list, team_id, scorer_list, goals_count):
@@ -249,7 +305,12 @@ def process_world_cup_data(raw_dir: str = "data/raw", processed_dir: str = "data
                 if goals_count > 0 and len(assisters) > 0:
                     num_assists = min(goals_count, rng.poisson(0.7 * goals_count))
                     if num_assists > 0:
-                        assister_ids = [p['player_id'] for p in rng.choice(assisters, size=num_assists, replace=True)]
+                        a_probs = get_probs(assisters, 'assists')
+                        selected_assisters = rng.choice(assisters, size=num_assists, p=a_probs, replace=True)
+                        assister_ids = [p['player_id'] for p in selected_assisters]
+                        # Increment assigned assists
+                        for pid in assister_ids:
+                            assigned_assists[pid] = assigned_assists.get(pid, 0) + 1
                         
                 for p in players_list:
                     p_goals = scorer_list.count(p['player_id'])
